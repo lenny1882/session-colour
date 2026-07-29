@@ -87,9 +87,10 @@ fi
 confirm "   Update now?" || { say "   Left alone."; exit 0; }
 
 if git rev-parse --verify --quiet "refs/remotes/origin/$branch" >/dev/null; then
-  git checkout --quiet -B "${branch#release/}" "refs/tags/v$latest" 2>/dev/null \
-    || git checkout --quiet "refs/tags/v$latest"
-  git branch --quiet --set-upstream-to "origin/$branch" "${branch#release/}" 2>/dev/null || true
+  # Local branch keeps the full release/vX.Y name, tracking its remote
+  # counterpart, so a later `git pull` here does the obvious thing.
+  git checkout --quiet -B "$branch" "refs/tags/v$latest"
+  git branch --set-upstream-to "origin/$branch" "$branch" >/dev/null 2>&1 || true
 else
   git checkout --quiet "refs/tags/v$latest"
 fi
