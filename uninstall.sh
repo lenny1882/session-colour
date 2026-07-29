@@ -88,12 +88,40 @@ fi
 [ -d "$STATE" ] && { rm -rf "$STATE"; ok "removed $STATE"; } || ok "no update state"
 
 step "The shell alias — remove this yourself"
+# Searches the usual rc files and anything they source, because shell config is
+# routinely kept somewhere else and pulled in — on this machine it lives on a
+# read-only mount, which a fixed list of ~/.* files would never have found.
+rc_files() {
+  local f line p
+  for f in "$HOME/.bashrc" "$HOME/.bash_profile" "$HOME/.bash_aliases" \
+           "$HOME/.profile" "$HOME/.zshrc" "$HOME/.zprofile" "$HOME/.zshenv"; do
+    [ -f "$f" ] || continue
+    printf '%s\n' "$f"
+    # Commented-out source lines are skipped — plenty of rc files carry a
+    # disabled completion loader, and listing those as "files looked at" is
+    # noise when reporting where the alias should go.
+    { grep -v '^[[:space:]]*#' "$f" 2>/dev/null \
+        | grep -oE '(^|[;[:space:]])(\.|source)[[:space:]]+[^;[:space:]"'"'"']+' \
+        | awk '{print $NF}' \
+        | while IFS= read -r p; do
+            case "$p" in
+              '~'/*)     p="$HOME/${p#\~/}" ;;
+              '$HOME'/*) p="$HOME/${p#\$HOME/}" ;;
+            esac
+            [ -f "$p" ] && printf '%s\n' "$p"
+          done
+    } || true
+  done
+  return 0
+}
+
 found=0
-for rc in "$HOME/.bashrc" "$HOME/.zshrc" "$HOME/.bash_profile" "$HOME/.profile"; do
-  if [ -f "$rc" ] && grep -q "claude/bin/claude-session" "$rc" 2>/dev/null; then
+for rc in $(rc_files | sort -u); do
+  if grep -q "claude-session" "$rc" 2>/dev/null; then
     found=1
-    warn "$rc line $(grep -n 'claude/bin/claude-session' "$rc" | head -1 | cut -d: -f1):"
-    grep -n "claude/bin/claude-session" "$rc" | sed 's/^/        /'
+    warn "$rc:"
+    grep -n "claude-session" "$rc" | sed 's/^/        /'
+    [ -w "$rc" ] || printf '%s\n' "        (read-only — you may need sudo, or to edit it elsewhere)"
   fi
 done
 if [ "$found" -eq 1 ]; then
@@ -101,7 +129,7 @@ if [ "$found" -eq 1 ]; then
   printf '%s\n' "  then open a new terminal. Until you do, 'claude' will point at a"
   printf '%s\n' "  script that no longer exists."
 else
-  ok "no alias found in your shell rc files"
+  ok "no alias found in your shell startup files"
 fi
 
 printf '\n%s\n' "Done. Existing sessions keep their current colour until they exit."

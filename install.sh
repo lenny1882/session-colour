@@ -3,10 +3,14 @@
 #
 # Everything except the shell alias can be done without asking: files are copied
 # into ~/.claude, and the settings.json keys are merged in with jq, replacing
-# only this project's own entries. The alias is the one step that has to touch a
-# file this script does not own, so it asks first and verifies afterwards.
+# only this project's own entries.
 #
-#   ./install.sh              copy files into place, ask before editing the rc
+# The alias is a manual step. It lives in a shell startup file this script
+# usually cannot write — often one sourced from a read-only mount or a dotfiles
+# repo — so the installer prints the exact line, waits while you add it, and
+# then checks whether it took.
+#
+#   ./install.sh              copy files into place, prompt for the alias
 #   ./install.sh --link       symlink instead of copying, for working on the repo
 #   ./install.sh --yes        assume yes to every prompt (unattended)
 #   ./install.sh --no-alias   skip the alias entirely; status line only
@@ -40,9 +44,16 @@ ok()   { printf '  ok    %s\n' "$*"; }
 warn() { printf '  warn  %s\n' "$*"; }
 step() { printf '\n== %s\n' "$*"; }
 
+# Prompts read from /dev/tty rather than stdin so they still work when the
+# installer is piped. When there is no controlling terminal at all — CI, a
+# hook, `sh install.sh < /dev/null` — there is nobody to answer, so every
+# question declines rather than hanging or erroring.
+tty_available() { { : < /dev/tty; } 2>/dev/null; }
+
 # Ask, unless --yes. Default is yes; anything starting with n declines.
 confirm() {
   [ "$ASSUME_YES" -eq 1 ] && return 0
+  tty_available || return 1
   local reply
   read -r -p "$1 [Y/n] " reply </dev/tty || return 1
   case "$reply" in [Nn]*) return 1 ;; *) return 0 ;; esac
@@ -158,36 +169,166 @@ else
 fi
 
 # --- 4. the alias ------------------------------------------------------------
-# This is what colours the prompt bar, and it is the only part that edits a file
-# outside ~/.claude. Aliases apply to interactive shells only, so scripts, cron
-# and tooling that call `claude` directly are unaffected.
+# This is what colours the prompt bar, and it is a manual step for most people.
+# Shell config is very often sourced from somewhere this script cannot write —
+# a shared mount, a dotfiles repo, a company-managed file — so the installer
+# tells you the line, waits, and then checks that it took, rather than assuming
+# it can edit your rc.
+#
+# Detection asks an interactive shell what `claude` actually resolves to. That
+# sees the alias wherever it is defined, including files sourced two levels
+# deep, which grepping a guessed list of rc files does not. On this machine the
+# alias lives in /mnt/sda/User/.bashrc_aliases, sourced from ~/.bashrc, on a
+# read-only mount — a guessed list would have missed it and the installer would
+# have offered to add a second copy.
+#
+# Aliases apply to interactive shells only, so scripts, cron and any tooling
+# that calls `claude` directly are unaffected.
+
+# The user's login shell, since that is what will read the alias. Falls back to
+# bash, which is also what the wrapper is written for.
+login_shell() {
+  case "${SHELL:-}" in
+    */zsh) printf 'zsh' ;;
+    *)     printf 'bash' ;;
+  esac
+}
+
+alias_active() {
+  local sh out
+  sh=$(login_shell)
+  command -v "$sh" >/dev/null 2>&1 || return 1
+  # -i makes it read the interactive rc chain. stdin from /dev/null and stderr
+  # discarded because a non-tty interactive shell complains about job control.
+  out=$("$sh" -ic 'alias claude' </dev/null 2>/dev/null) || return 1
+  case "$out" in *claude-session*) return 0 ;; esac
+  return 1
+}
+
+# Where it is defined, for reporting. Looks in the usual rc files and in
+# anything they source with an absolute or $HOME-relative path.
+alias_source_file() {
+  local f p
+  for f in $(rc_files); do
+    [ -f "$f" ] || continue
+    grep -lq "claude-session" "$f" 2>/dev/null && { printf '%s' "$f"; return 0; }
+  done
+  return 1
+}
+
+rc_files() {
+  local f line p
+  for f in "$HOME/.bashrc" "$HOME/.bash_profile" "$HOME/.bash_aliases" \
+           "$HOME/.profile" "$HOME/.zshrc" "$HOME/.zprofile" "$HOME/.zshenv"; do
+    [ -f "$f" ] || continue
+    printf '%s\n' "$f"
+    # Anything sourced with `. path` or `source path`, wherever it appears on
+    # the line — these are commonly wrapped in a one-line `if [ -f ... ]`.
+    # Commented-out source lines are skipped — plenty of rc files carry a
+    # disabled completion loader, and listing those as "files looked at" is
+    # noise when reporting where the alias should go.
+    { grep -v '^[[:space:]]*#' "$f" 2>/dev/null \
+        | grep -oE '(^|[;[:space:]])(\.|source)[[:space:]]+[^;[:space:]"'"'"']+' \
+        | awk '{print $NF}' \
+        | while IFS= read -r p; do
+            case "$p" in
+              '~'/*)     p="$HOME/${p#\~/}" ;;
+              '$HOME'/*) p="$HOME/${p#\$HOME/}" ;;
+            esac
+            [ -f "$p" ] && printf '%s\n' "$p"
+          done
+    } || true
+  done
+  return 0
+}
+
+# A candidate we could actually append to, if the user wants that instead.
+writable_rc() {
+  local f
+  case "$(login_shell)" in
+    zsh)  for f in "$HOME/.zshrc" "$HOME/.zprofile"; do
+            { [ -f "$f" ] && [ -w "$f" ]; } && { printf '%s' "$f"; return 0; }
+          done ;;
+    *)    for f in "$HOME/.bash_aliases" "$HOME/.bashrc" "$HOME/.bash_profile" "$HOME/.profile"; do
+            { [ -f "$f" ] && [ -w "$f" ]; } && { printf '%s' "$f"; return 0; }
+          done ;;
+  esac
+  return 1
+}
+
+append_alias() {   # file
+  { echo; echo "# session-colour: colour the prompt bar per folder"; echo "$ALIAS_LINE"; } >> "$1"
+}
+
 step "Prompt bar alias"
 if [ "$WANT_ALIAS" -eq 0 ]; then
   say "  Skipped (--no-alias). The status line will still be coloured; the"
   say "  prompt bar itself will not."
+elif alias_active; then
+  ok "the 'claude' alias is active"
+  if where=$(alias_source_file); then ok "defined in $where"; fi
 else
-  rc="$HOME/.bashrc"
-  [ -n "${ZSH_VERSION:-}" ] && rc="$HOME/.zshrc"
-  case "${SHELL:-}" in */zsh) rc="$HOME/.zshrc" ;; esac
+  target=$(writable_rc || true)
 
-  if [ -f "$rc" ] && grep -q "claude/bin/claude-session" "$rc"; then
-    ok "already present in $rc"
-  elif [ ! -w "$rc" ] && [ -e "$rc" ]; then
-    # A read-only rc is a real setup here — this machine keeps shell config on
-    # a read-only mount — so say what to add rather than failing.
-    warn "$rc is not writable. Add this line yourself:"
-    say  "    $ALIAS_LINE"
-  elif confirm "  Append the alias to $rc?"; then
-    { echo; echo "# session-colour: colour the prompt bar per folder"; echo "$ALIAS_LINE"; } >> "$rc"
-    if grep -q "claude/bin/claude-session" "$rc"; then
-      ok "added to $rc"
+  say
+  say "  MANUAL STEP — the prompt bar colour needs a shell alias."
+  say
+  say "  Add this line to your shell startup file:"
+  say
+  say "      $ALIAS_LINE"
+  say
+  say "  Either form works — \$HOME or the full path — as long as it points at"
+  say "  $BIN_DIR/claude-session."
+  say
+
+  if [ -n "$target" ]; then
+    say "  A writable candidate is: $target"
+  else
+    say "  None of your shell startup files are writable by this script, so it"
+    say "  has to be done by hand. Files it looked at:"
+    rc_files | sort -u | sed 's/^/      /'
+  fi
+  say
+  say "  Then open a NEW terminal — the current one has already read its config."
+  say
+
+  if [ "$ASSUME_YES" -eq 1 ] || ! tty_available; then
+    # Unattended: append if we can, otherwise say so and carry on rather than
+    # blocking a scripted install on a prompt nobody is there to answer.
+    if [ -n "$target" ]; then
+      append_alias "$target"
+      ok "appended to $target"
     else
-      warn "the append did not take. Add it yourself:"
-      say  "    $ALIAS_LINE"
+      warn "not added — no writable startup file, and nobody to ask."
+      warn "Add the line above by hand; everything else is installed."
     fi
   else
-    say "  Not added. To colour the prompt bar later, put this in $rc:"
-    say  "    $ALIAS_LINE"
+    if [ -n "$target" ] && confirm "  Append it to $target for you?"; then
+      append_alias "$target"
+      if alias_active; then ok "added to $target, and confirmed active"
+      else ok "added to $target"; warn "not visible yet — it will be in a new shell"; fi
+    else
+      # Wait for them to do it, then verify. This is the prompt-and-check the
+      # step is here for: the installer cannot make the edit, but it can tell
+      # you whether the edit worked.
+      while true; do
+        printf '  Add the line, then press Enter to re-check (or s to skip): '
+        read -r reply </dev/tty || { say; break; }
+        case "$reply" in
+          s|S|skip|Skip)
+            warn "skipped — the prompt bar will stay grey until the alias exists"
+            break ;;
+        esac
+        if alias_active; then
+          ok "found it — the alias is active"
+          if where=$(alias_source_file); then ok "defined in $where"; fi
+          break
+        fi
+        warn "still not seeing 'claude' resolve to claude-session."
+        warn "Check you saved the file, and that your login shell ($(login_shell))"
+        warn "actually reads it. 'type claude' in a new terminal should show it."
+      done
+    fi
   fi
 fi
 
@@ -209,11 +350,30 @@ jq -e '.hooks.SessionStart | map(.hooks[].command) | any(contains("session-ident
 jq -e '.hooks.SessionEnd | map(.hooks[].command) | any(contains("session-identity-end.sh"))' \
   "$SETTINGS" >/dev/null && ok "SessionEnd hook registered" || { warn "SessionEnd hook NOT registered"; fail=1; }
 
+# The alias is reported, not counted as a failure: the status line works
+# without it, and it is the one thing the installer may legitimately not have
+# been able to do.
+alias_missing=0
+if [ "$WANT_ALIAS" -eq 0 ]; then
+  ok "alias skipped (--no-alias)"
+elif alias_active; then
+  ok "'claude' alias active"
+else
+  warn "'claude' alias NOT active — status line only, prompt bar stays grey"
+  alias_missing=1
+fi
+
 say
 if [ "$fail" -eq 0 ]; then
   say "Done. Open a NEW terminal in a folder no current session uses:"
-  say "  - the prompt bar should come up already coloured (needs the alias)"
-  say "  - the status line under it should match"
+  if [ "$alias_missing" -eq 1 ]; then
+    say "  - the status line should be coloured"
+    say "  - the prompt bar will NOT be, until you add this to your shell config:"
+    say "        $ALIAS_LINE"
+  else
+    say "  - the prompt bar should come up already coloured"
+    say "  - the status line under it should match"
+  fi
   say
   say "Sessions already running predate the install and stay uncoloured until"
   say "restarted. If Claude Code is open, /hooks forces a settings reload."

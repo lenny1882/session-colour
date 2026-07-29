@@ -78,16 +78,56 @@ cd session-colour
 ./install.sh
 ```
 
-It copies the four scripts into `~/.claude/`, merges the `statusLine` key and
-the `SessionStart`/`SessionEnd` hooks into `~/.claude/settings.json` with `jq`,
-and asks once before appending the alias to your shell rc. Everything else it
-does without asking, because everything else is inside `~/.claude`.
+It copies the four scripts into `~/.claude/` and merges the `statusLine` key and
+the `SessionStart`/`SessionEnd` hooks into `~/.claude/settings.json` with `jq`.
+Everything inside `~/.claude` it does without asking.
+
+**The shell alias is a manual step.** It's the one thing that lives outside
+`~/.claude`, in a shell startup file the installer usually can't write — often
+one sourced from a read-only mount or a dotfiles repo. So it prints the line,
+waits while you add it, and then checks whether it took:
+
+```
+== Prompt bar alias
+
+  MANUAL STEP — the prompt bar colour needs a shell alias.
+
+  Add this line to your shell startup file:
+
+      alias claude='$HOME/.claude/bin/claude-session'
+
+  Either form works — $HOME or the full path — as long as it points at
+  /home/you/.claude/bin/claude-session.
+
+  None of your shell startup files are writable by this script, so it
+  has to be done by hand. Files it looked at:
+      /home/you/.bashrc
+      /mnt/sda/User/.bashrc_aliases
+      ...
+
+  Then open a NEW terminal — the current one has already read its config.
+
+  Add the line, then press Enter to re-check (or s to skip):
+```
+
+Press Enter and it re-checks. When it finds it, it says where it's defined and
+moves on. `s` skips — the status line still works, the prompt bar just stays
+grey. If one of your startup files *is* writable, it offers to append the line
+for you instead.
+
+The check asks an interactive shell what `claude` actually resolves to, rather
+than grepping a guessed list of files. That finds the alias wherever it's
+defined, including files sourced two levels deep from `~/.bashrc`. The final
+summary reports whether the alias is active, so a skipped step doesn't go quiet.
 
 | Option | Effect |
 |---|---|
 | `--link` | Symlink instead of copy, so edits in the repo take effect immediately. |
-| `--yes` | Assume yes to every prompt. |
-| `--no-alias` | Skip the alias. Status line only, no prompt bar colour. |
+| `--yes` | Assume yes to every prompt. Appends the alias if a startup file is writable; otherwise says it didn't and carries on. |
+| `--no-alias` | Skip the alias entirely. Status line only, no prompt bar colour. |
+
+With no terminal at all — CI, a pipe, a hook — nothing hangs: every question
+declines and the alias step reports what to do by hand.
 
 Re-running is safe, and is how you upgrade. Each step replaces what it wrote
 last time; the settings merge strips this project's own hook entries by command
@@ -138,7 +178,9 @@ Nothing updates itself. The check only ever writes a state file.
 
 Removes the scripts, the settings keys, the colour registry and the update
 state, asking before each destructive step. The shell alias it will not edit for
-you — it prints the exact lines to delete and which file they're in.
+you — it searches your startup files and anything they source, then prints the
+exact lines to delete and which file they're in, flagging any that are
+read-only.
 
 ## How the colours are held
 
