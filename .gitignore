@@ -1,0 +1,14 @@
+# Preview output from tools/
+*.svg
+# Editor and OS noise
+*.swp
+*~
+.DS_Store
+# Local backups made while editing
+*.bak
+*.bak-*
+
+# Sandbox bookkeeping created in the repo root by the Claude Code sandbox.
+# Not part of this project.
+.claude/
+.mcp.json

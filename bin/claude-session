@@ -1,0 +1,175 @@
+#!/usr/bin/env bash
+# Wrapper that starts Claude Code with the prompt bar already coloured for this
+# folder.
+#
+# There is no --color flag. The mechanism is the positional `prompt` argument:
+# in an interactive session Claude Code submits it as the first turn, and
+# `/color <name>` is a local command, so it runs without an API call.
+#
+#     claude '/color red'   ->   "Session color set to: red", box turns red
+#
+# Colour allocation reuses the same ~/.claude/session-colors registry as the
+# SessionStart hook, so the status line and the prompt bar agree. This script
+# claims the colour BEFORE exec, and exports CLAUDE_SESSION_COLOUR so the hook
+# registers rather than allocating a second time.
+#
+# Because it exec's, $$ becomes the pid of the claude process itself, which is
+# what the registry's liveness check (kill -0) needs.
+#
+# Install: alias claude='~/.claude/bin/claude-session'
+# Aliases do not apply to non-interactive shells, so scripts and tooling that
+# invoke `claude` directly are unaffected.
+
+set -uo pipefail
+
+REAL_CLAUDE="${CLAUDE_REAL_BIN:-$HOME/.local/bin/claude}"
+REG="${HOME}/.claude/session-colors"
+LOCK="$REG/.lock"
+PALETTE=(red blue green yellow purple orange pink cyan)
+
+# --- decide whether colouring applies at all ---------------------------------
+# Skipped for: print mode (no prompt bar), resume/continue/fork (Claude Code
+# restores the session's own agentColor from the transcript), nested sessions,
+# a non-tty, and any invocation that already carries a positional prompt — the
+# prompt slot holds only one value and the user's own prompt wins.
+#
+# Telling a positional prompt from an option's value needs the option table,
+# so the three lists below are derived from `claude --help` (2.1.220). Every
+# ambiguity resolves towards *not* colouring: the failure mode is a default
+# prompt bar, never a swallowed prompt.
+
+# Options that make colouring meaningless or that restore their own colour.
+DISQUALIFY=" -p --print -c --continue -r --resume --teleport --fork-session
+ --bg --background --bare --resume-session-at --rewind-files --from-pr "
+
+# Variadic (<x...>): consume an unknown number of following tokens.
+DISQUALIFY+=" --add-dir --allowedTools --allowed-tools --disallowedTools
+ --disallowed-tools --betas "
+
+# Exactly one value follows.
+TAKES_VALUE=" --agent --agents --append-system-prompt --debug-file --effort
+ --fallback-model --file --input-format --json-schema --max-budget-usd
+ --mcp-config --model -n --name --output-format --permission-mode --plugin-dir
+ --plugin-url --remote-control-session-name-prefix --session-id --settings
+ --setting-sources --system-prompt --tools "
+
+# Value is optional ([x]): if a bare token follows we cannot tell value from
+# prompt, so bail.
+OPTIONAL_VALUE=" -d --debug -w --worktree --remote-control --prompt-suggestions "
+
+# Collapse the line breaks above to single spaces: in_list matches on " tok ".
+DISQUALIFY=" $(echo $DISQUALIFY) "
+TAKES_VALUE=" $(echo $TAKES_VALUE) "
+OPTIONAL_VALUE=" $(echo $OPTIONAL_VALUE) "
+
+in_list() { case "$2" in *" $1 "*) return 0 ;; esac; return 1; }
+
+should_colour() {
+  [ -t 1 ] || return 1
+  [ -z "${CLAUDE_CODE_CHILD_SESSION:-}" ] || return 1
+
+  local a next
+  while [ $# -gt 0 ]; do
+    a="$1"; shift
+    next="${1:-}"
+    case "$a" in
+      --) return 1 ;;            # end of options: a prompt follows
+      *=*) case "$a" in -*) continue ;; esac ;;   # --opt=value carries its own
+    esac
+    if in_list "$a" "$DISQUALIFY"; then
+      return 1
+    elif in_list "$a" "$TAKES_VALUE"; then
+      [ $# -gt 0 ] && shift      # step over the value
+    elif in_list "$a" "$OPTIONAL_VALUE"; then
+      case "$next" in
+        ""|-*) ;;                # no value present
+        *) return 1 ;;           # ambiguous: could be value or prompt
+      esac
+    else
+      case "$a" in
+        -*) ;;                   # some other boolean flag
+        *) return 1 ;;           # a positional: that's the user's prompt
+      esac
+    fi
+  done
+  return 0
+}
+
+acquire_lock() {
+  local i=0
+  while ! mkdir "$LOCK" 2>/dev/null; do
+    i=$((i + 1))
+    if [ "$i" -gt 50 ]; then     # ~5s: assume the holder died mid-write
+      rm -rf "$LOCK" 2>/dev/null
+      continue
+    fi
+    sleep 0.1
+  done
+  trap 'rm -rf "$LOCK" 2>/dev/null' EXIT
+}
+
+# Claim this folder's colour, or join the one it already holds.
+# Prints the colour name, or nothing if all eight are taken.
+claim_colour() {
+  local cwd="$PWD" found="" chosen="" f fdir first line p
+  local -a live
+
+  mkdir -p "$REG"
+  acquire_lock
+
+  # Drop dead sessions; release folders left with none.
+  for f in "$REG"/*; do
+    [ -e "$f" ] || continue
+    fdir=""; live=(); first=1
+    while IFS= read -r line || [ -n "$line" ]; do
+      if [ "$first" -eq 1 ]; then
+        case "$line" in dir=*) fdir=${line#dir=} ;; esac
+        first=0
+        continue
+      fi
+      p=${line%% *}
+      [ -n "$p" ] || continue
+      kill -0 "$p" 2>/dev/null && live+=("$line")
+    done < "$f"
+
+    if [ "${#live[@]}" -eq 0 ]; then
+      rm -f "$f"
+      continue
+    fi
+    { printf 'dir=%s\n' "$fdir"; printf '%s\n' "${live[@]}"; } > "$f"
+    [ "$fdir" = "$cwd" ] && found=$(basename "$f")
+  done
+
+  chosen="$found"
+  if [ -z "$chosen" ]; then
+    local name
+    for name in "${PALETTE[@]}"; do
+      if [ ! -e "$REG/$name" ]; then
+        chosen="$name"
+        printf 'dir=%s\n' "$cwd" > "$REG/$name"
+        break
+      fi
+    done
+  fi
+
+  # All eight held by other folders: stay default rather than making two
+  # folders indistinguishable.
+  [ -n "$chosen" ] || return 0
+
+  # $$ survives the exec below and becomes the claude process.
+  printf '%s %s\n' "$$" "pending" >> "$REG/$chosen"
+  printf '%s' "$chosen"
+}
+
+# --- main --------------------------------------------------------------------
+if should_colour "$@"; then
+  colour=$(claim_colour)
+  rm -rf "$LOCK" 2>/dev/null
+  trap - EXIT
+  if [ -n "$colour" ]; then
+    export CLAUDE_SESSION_COLOUR="$colour"
+    exec "$REAL_CLAUDE" "$@" "/color $colour"
+  fi
+fi
+
+exec "$REAL_CLAUDE" "$@"
