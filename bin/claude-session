@@ -22,7 +22,33 @@
 
 set -uo pipefail
 
-REAL_CLAUDE="${CLAUDE_REAL_BIN:-$HOME/.local/bin/claude}"
+# Where the real binary lives. ~/.local/bin/claude is what the official
+# installer uses, but an npm-global or system-wide install puts it elsewhere, so
+# fall back to a PATH lookup. Set CLAUDE_REAL_BIN to override either.
+#
+# The PATH lookup cannot pick up this wrapper by accident: it is installed as
+# claude-session and reached through an alias, so it is never itself on PATH
+# as `claude`. The check below is there in case someone symlinks it as one,
+# which would otherwise exec in a loop.
+find_real_claude() {
+  local c
+  if [ -n "${CLAUDE_REAL_BIN:-}" ]; then printf '%s' "$CLAUDE_REAL_BIN"; return 0; fi
+  if [ -x "$HOME/.local/bin/claude" ]; then printf '%s' "$HOME/.local/bin/claude"; return 0; fi
+  c=$(command -v claude 2>/dev/null) || return 1
+  [ -n "$c" ] || return 1
+  case "$(readlink -f "$c" 2>/dev/null || printf '%s' "$c")" in
+    "$(readlink -f "$0" 2>/dev/null || printf '%s' "$0")") return 1 ;;
+  esac
+  printf '%s' "$c"
+}
+
+REAL_CLAUDE=$(find_real_claude || true)
+if [ -z "$REAL_CLAUDE" ] || [ ! -x "$REAL_CLAUDE" ]; then
+  printf 'claude-session: cannot find the claude binary.\n' >&2
+  printf '  Looked at: $CLAUDE_REAL_BIN, ~/.local/bin/claude, then PATH.\n' >&2
+  printf '  Set CLAUDE_REAL_BIN to its full path, or remove the claude alias.\n' >&2
+  exit 127
+fi
 REG="${HOME}/.claude/session-colors"
 LOCK="$REG/.lock"
 PALETTE=(red blue green yellow purple orange pink cyan)

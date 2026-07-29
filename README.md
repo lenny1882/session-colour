@@ -47,7 +47,12 @@ alias claude='$HOME/.claude/bin/claude-session'
 After that, `claude` works exactly as before. The wrapper claims the folder's
 colour, then hands off to the real binary with `/color <name>` as the opening
 prompt — the only route to the prompt bar colour that works in an interactive
-session. It steps aside whenever colouring would cost you something: if you pass
+session.
+
+It finds the real binary at `~/.local/bin/claude` (where the official installer
+puts it), falling back to a `PATH` lookup for npm-global or system-wide
+installs. Set `CLAUDE_REAL_BIN` to point at it directly if yours is somewhere
+else. If it can't find one it says so and exits rather than failing obscurely. It steps aside whenever colouring would cost you something: if you pass
 your own prompt, or use `-p`, `--resume`, `--continue` or `--fork-session`, it
 runs the real binary unchanged. Aliases don't apply to non-interactive shells,
 so scripts, cron jobs and other tooling that call `claude` are unaffected.
