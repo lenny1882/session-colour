@@ -46,7 +46,8 @@ done
 
 # One line. Timestamps are relative to now so the reset times read naturally.
 line() {
-  local dir=${PV_DIR:-/home/james/example-project} now
+  # Only the basename is ever rendered, so the leading path is arbitrary.
+  local dir=${PV_DIR:-$HOME/example-project} now
   now=$(date +%s)
   jq -n --arg d "$dir" \
         --argjson fh $(( now + 3 * 3600 )) \

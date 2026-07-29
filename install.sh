@@ -175,12 +175,12 @@ fi
 # tells you the line, waits, and then checks that it took, rather than assuming
 # it can edit your rc.
 #
-# Detection asks an interactive shell what `claude` actually resolves to. That
-# sees the alias wherever it is defined, including files sourced two levels
-# deep, which grepping a guessed list of rc files does not. On this machine the
-# alias lives in /mnt/sda/User/.bashrc_aliases, sourced from ~/.bashrc, on a
-# read-only mount — a guessed list would have missed it and the installer would
-# have offered to add a second copy.
+# Detection asks an interactive shell what `claude` actually resolves to, so
+# nothing here depends on knowing where your config lives. It sees the alias
+# wherever it is defined — including files sourced two levels deep from the rc —
+# which grepping a guessed list of ~/.* files does not. Getting that wrong is
+# not harmless: an alias the installer cannot see is one it offers to add a
+# second copy of, in a different file, that may then shadow the first.
 #
 # Aliases apply to interactive shells only, so scripts, cron and any tooling
 # that calls `claude` directly are unaffected.

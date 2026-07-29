@@ -102,7 +102,7 @@ waits while you add it, and then checks whether it took:
   None of your shell startup files are writable by this script, so it
   has to be done by hand. Files it looked at:
       /home/you/.bashrc
-      /mnt/sda/User/.bashrc_aliases
+      /home/you/.profile
       ...
 
   Then open a NEW terminal — the current one has already read its config.
@@ -116,8 +116,10 @@ grey. If one of your startup files *is* writable, it offers to append the line
 for you instead.
 
 The check asks an interactive shell what `claude` actually resolves to, rather
-than grepping a guessed list of files. That finds the alias wherever it's
-defined, including files sourced two levels deep from `~/.bashrc`. The final
+than grepping a guessed list of files. So it finds the alias wherever you keep
+it — including files sourced two levels deep from your rc — and no path to your
+config is written down anywhere. The list above is only for reporting, and is
+built by following the `source` lines in your own startup files. The final
 summary reports whether the alias is active, so a skipped step doesn't go quiet.
 
 | Option | Effect |
@@ -188,7 +190,7 @@ One file per claimed colour, in `~/.claude/session-colors/`:
 
 ```
 ~/.claude/session-colors/red
-    dir=/home/james/claude-sandbox
+    dir=/home/you/projects/api-gateway
     308167 2f3e0da6-6a8c-4270-8f41-b1843ce47d7e
     309442 8b1c4e77-...
 ```

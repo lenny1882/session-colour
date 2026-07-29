@@ -88,9 +88,9 @@ fi
 [ -d "$STATE" ] && { rm -rf "$STATE"; ok "removed $STATE"; } || ok "no update state"
 
 step "The shell alias — remove this yourself"
-# Searches the usual rc files and anything they source, because shell config is
-# routinely kept somewhere else and pulled in — on this machine it lives on a
-# read-only mount, which a fixed list of ~/.* files would never have found.
+# Searches the usual rc files and anything they source, since shell config is
+# routinely kept elsewhere and pulled in — a fixed list of ~/.* files would
+# report "no alias found" while the alias was still live.
 rc_files() {
   local f line p
   for f in "$HOME/.bashrc" "$HOME/.bash_profile" "$HOME/.bash_aliases" \
