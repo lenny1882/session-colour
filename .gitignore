@@ -9,6 +9,8 @@
 *.bak-*
 
 # Sandbox bookkeeping created in the repo root by the Claude Code sandbox.
-# Not part of this project.
-.claude/
+# Not part of this project — but .claude/skills/ holds real project skills
+# (e.g. the release process) and is tracked deliberately.
+.claude/*
+!.claude/skills/
 .mcp.json

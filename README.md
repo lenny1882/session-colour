@@ -149,11 +149,24 @@ can't find one.
 Sessions already running predate the install and stay uncoloured until they
 restart. If Claude Code is open, `/hooks` forces a settings reload.
 
+## Releasing
+
+Run `/release` (see [`.claude/skills/release`](.claude/skills/release/SKILL.md)).
+It bumps `VERSION` on `main`, merges `main` into the matching `release/vX.Y`
+branch, and tags there — which is what [the release
+workflow](.github/workflows/release.yml) turns into a GitHub Release with
+auto-generated notes. The workflow fires on any pushed `vX.Y.Z` tag, so the
+`release/vX.Y`-only rule is enforced by always going through that skill, not
+by the workflow itself. A tag with a hyphen, e.g. `v1.2.0-rc1`, is published
+as a pre-release and is skipped by everyone's update check.
+
 ## Updating
 
 A check runs once a day, in the background, when a session starts. It asks the
-git remote which release tags exist and writes the answer to a state file. It
-never fetches, never touches your working tree, and never installs anything.
+GitHub Releases API (`/releases/latest`) what the newest non-draft,
+non-pre-release version is and writes the answer to a state file. It never
+fetches, never touches your working tree, and never installs anything. Needs
+`curl` and a `github.com` origin remote; `jq` is used when installed.
 
 When a newer release exists, the status line grows a badge:
 
@@ -171,9 +184,10 @@ cd session-colour
 ./update.sh
 ```
 
-That fetches, works out the newest `vX.Y.Z` tag, moves to the matching
-`release/vX.Y` branch, and re-runs the installer. It refuses to move if you have
-uncommitted changes. `./update.sh --check` reports what is available and stops.
+That asks GitHub for the latest release, moves to the matching `release/vX.Y`
+branch (falling back to a detached `vX.Y.Z` tag if that branch doesn't exist),
+and re-runs the installer. It refuses to move if you have uncommitted changes.
+`./update.sh --check` reports what is available and stops.
 
 Nothing updates itself. The check only ever writes a state file.
 

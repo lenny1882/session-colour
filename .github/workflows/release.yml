@@ -1,0 +1,45 @@
+name: Release
+
+# Cutting a release is: push a vX.Y.Z tag from its release/vX.Y branch. This
+# turns that tag into a GitHub Release with auto-generated notes, which is
+# what update.sh and lib/update-check.sh read via /releases/latest.
+#
+# GitHub fires this on any vX.Y.Z tag push, regardless of branch — a tag push
+# and a branch push are separate ref events, so `on.push` can't require the
+# tag to belong to a particular branch on its own, and a workflow-side check
+# would need the full git history just to answer that. Instead the guarantee
+# is process, not CI: the /release skill (.claude/skills/release/SKILL.md) is
+# the only place tags get created, and it only ever tags release/vX.Y after
+# merging main into it. Follow that skill and this trigger is safe as-is.
+#
+# A tag with a hyphen (v1.2.0-rc1) is published as a pre-release, so it's
+# skipped by /releases/latest and won't be offered to anyone running the
+# stable update flow.
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          prerelease_flag=()
+          case "$TAG" in
+            *-*) prerelease_flag=(--prerelease) ;;
+          esac
+          gh release create "$TAG" \
+            --title "$TAG" \
+            --generate-notes \
+            "${prerelease_flag[@]}"
