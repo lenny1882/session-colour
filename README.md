@@ -78,10 +78,19 @@ patches change shape.
 ## Installing
 
 ```bash
-git clone <url> session-colour
+curl -L -o session-colour.tar.gz \
+  https://github.com/lenny1882/session-colour/releases/latest/download/session-colour.tar.gz
+mkdir session-colour && tar -xzf session-colour.tar.gz -C session-colour --strip-components=1
 cd session-colour
 ./install.sh
 ```
+
+That downloads the latest release's install tarball — just the files needed to
+run the tool, no git history or dev-only files. `./update.sh` later
+re-downloads and re-extracts the same way, so no git is required at any point.
+If you'd rather work from a git clone (for example to edit the scripts), that
+still works the same way it always has:
+`git clone <url> session-colour && cd session-colour && ./install.sh`.
 
 It copies the four scripts into `~/.claude/` and merges the `statusLine` key and
 the `SessionStart`/`SessionEnd` hooks into `~/.claude/settings.json` with `jq`.
@@ -140,7 +149,9 @@ Re-running is safe, and is how you upgrade. Each step replaces what it wrote
 last time; the settings merge strips this project's own hook entries by command
 match before re-adding them, so nothing stacks up and nothing else is touched.
 
-**Needs:** bash 4+, `jq`, `git`, and a terminal with 24-bit colour. A Nerd Font
+**Needs:** bash 4+, `jq`, `git`, and a terminal with 24-bit colour. `git` is for
+the status line's branch block, not for installing or updating — both of those
+work from the release tarball without it. A Nerd Font
 is strongly recommended — the status line uses powerline separators and two
 private-use glyphs, which show as boxes without one. The installer warns if it
 can't find one.
@@ -155,18 +166,19 @@ Run `/release` (see [`.claude/skills/release`](.claude/skills/release/SKILL.md))
 It bumps `VERSION` on `main`, merges `main` into the matching `release/vX.Y`
 branch, and tags there — which is what [the release
 workflow](.github/workflows/release.yml) turns into a GitHub Release with
-auto-generated notes. The workflow fires on any pushed `vX.Y.Z` tag, so the
-`release/vX.Y`-only rule is enforced by always going through that skill, not
-by the workflow itself. A tag with a hyphen, e.g. `v1.2.0-rc1`, is published
-as a pre-release and is skipped by everyone's update check.
+auto-generated notes and a `session-colour.tar.gz` install tarball attached.
+The workflow fires on any pushed `vX.Y.Z` tag, so the `release/vX.Y`-only rule
+is enforced by always going through that skill, not by the workflow itself. A
+tag with a hyphen, e.g. `v1.2.0-rc1`, is published as a pre-release and is
+skipped by everyone's update check.
 
 ## Updating
 
 A check runs once a day, in the background, when a session starts. It asks the
 GitHub Releases API (`/releases/latest`) what the newest non-draft,
 non-pre-release version is and writes the answer to a state file. It never
-fetches, never touches your working tree, and never installs anything. Needs
-`curl` and a `github.com` origin remote; `jq` is used when installed.
+downloads anything, never touches the install directory, and never installs
+anything. Needs `curl`; `jq` is used when installed.
 
 When a newer release exists, the status line grows a badge:
 
@@ -184,9 +196,9 @@ cd session-colour
 ./update.sh
 ```
 
-That asks GitHub for the latest release, moves to the matching `release/vX.Y`
-branch (falling back to a detached `vX.Y.Z` tag if that branch doesn't exist),
-and re-runs the installer. It refuses to move if you have uncommitted changes.
+That asks GitHub for the latest release, downloads its `session-colour.tar.gz`
+asset, extracts it over this directory, and re-runs the installer — no git
+involved, whether this directory came from a tarball or a git clone.
 `./update.sh --check` reports what is available and stops.
 
 Nothing updates itself. The check only ever writes a state file.

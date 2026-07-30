@@ -71,6 +71,8 @@ say "   repo: $REPO"
 [ "$LINK" -eq 1 ] && say "   mode: symlink (edits in the repo take effect immediately)"
 
 # --- 1. what this needs ------------------------------------------------------
+# `git` is here for the status line's branch block, not for installing or
+# updating: both work from a downloaded release tarball with no git at all.
 step "Checking prerequisites"
 missing=()
 for c in jq git; do command -v "$c" >/dev/null 2>&1 || missing+=("$c"); done
