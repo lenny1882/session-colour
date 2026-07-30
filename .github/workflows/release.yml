@@ -15,6 +15,14 @@ name: Release
 # A tag with a hyphen (v1.2.0-rc1) is published as a pre-release, so it's
 # skipped by /releases/latest and won't be offered to anyone running the
 # stable update flow.
+#
+# GitHub's own "Source code" links (the ones attached to every release for
+# free) are just the repo checkout at the tag, .github/ and .claude/ included.
+# That's fine for developers but wrong to hand to someone who just wants to
+# install the tool — so this also builds an install-only tarball (bin/, hooks/,
+# lib/, tools/, docs/, the three shell entry points, VERSION, README) with a
+# stable name and uploads it as a release asset alongside the auto-generated
+# ones.
 
 on:
   push:
@@ -30,6 +38,15 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Build install tarball
+        env:
+          TAG: ${{ github.ref_name }}
+        run: |
+          git archive --format=tar.gz \
+            --prefix="session-colour-$TAG/" \
+            -o "session-colour-$TAG.tar.gz" \
+            "$TAG" -- bin hooks lib tools docs install.sh uninstall.sh update.sh VERSION README.md
+
       - name: Create GitHub Release
         env:
           GH_TOKEN: ${{ github.token }}
@@ -42,4 +59,5 @@ jobs:
           gh release create "$TAG" \
             --title "$TAG" \
             --generate-notes \
-            "${prerelease_flag[@]}"
+            "${prerelease_flag[@]}" \
+            "session-colour-$TAG.tar.gz"
