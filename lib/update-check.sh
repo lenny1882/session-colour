@@ -3,14 +3,15 @@
 #
 # Asks the GitHub Releases API what the latest release is, compares it against
 # the version recorded at install time, and writes the answer to a state file.
-# It never fetches, never touches the working tree, and never installs
+# It never fetches, never touches the install directory, and never installs
 # anything — upgrading is always an explicit `./update.sh`.
 #
-# Releases are GitHub Releases tagged vX.Y.Z, cut on release/vX.Y branches. The
-# `/releases/latest` endpoint is what decides "latest" here, so a release left
-# as a draft or marked pre-release is skipped automatically, no matter how its
-# version number sorts. The matching release branch is recorded alongside it
-# so update.sh knows what to check out.
+# Releases are GitHub Releases tagged vX.Y.Z. The `/releases/latest` endpoint
+# is what decides "latest" here, so a release left as a draft or marked
+# pre-release is skipped automatically, no matter how its version number
+# sorts. update.sh downloads that release's session-colour.tar.gz asset
+# directly — no git involved, so this works the same whether the install
+# came from a git clone or a downloaded tarball.
 #
 # The check runs at most once per calendar day. Callers should run it in the
 # background: a remote that is unreachable, slow, or asking for credentials
@@ -19,7 +20,7 @@
 # offline machine tries once a day rather than every session.
 #
 # Needs `curl` and, ideally, `jq` (falls back to a plain-text scrape of the
-# JSON if `jq` isn't installed). Only works against GitHub-hosted origins.
+# JSON if `jq` isn't installed).
 #
 # Everything a caller displays comes from the *previous* run's state file. That
 # is deliberate: reading a file is instant, whereas waiting on the network is
@@ -36,11 +37,11 @@ set -uo pipefail
 
 PROJECT="session-colour"
 DISPLAY_NAME="session-colour"
+GITHUB_SLUG="lenny1882/session-colour"
 
 STATE="${XDG_STATE_HOME:-$HOME/.local/state}/$PROJECT"
 STAMP="$STATE/last-check"
 AVAIL="$STATE/available"
-BRANCH_F="$STATE/available-branch"
 URL_F="$STATE/available-url"
 INSTALLED="$STATE/installed"
 REPO_F="$STATE/repo-dir"
@@ -53,21 +54,6 @@ newer_than() {
   [ -n "$2" ] || return 1
   [ "$1" = "$2" ] && return 1
   [ "$(printf '%s\n%s\n' "$1" "$2" | sort -V | tail -1)" = "$2" ]
-}
-
-# "owner/repo" from a GitHub origin URL, whichever form it's in. Empty (and a
-# failing exit) for anything not hosted on github.com.
-github_slug() {
-  local url="$1"
-  case "$url" in
-    git@github.com:*)       url="${url#git@github.com:}" ;;
-    ssh://git@github.com/*) url="${url#ssh://git@github.com/}" ;;
-    https://github.com/*)   url="${url#https://github.com/}" ;;
-    *) return 1 ;;
-  esac
-  url="${url%.git}"
-  [ -n "$url" ] || return 1
-  printf '%s\n' "$url"
 }
 
 # Pull one string field out of a JSON blob: $1 is the JSON, $2 the field name.
@@ -93,36 +79,29 @@ update_pending() {
 # --- the check itself --------------------------------------------------------
 
 do_check() {
-  local repo url slug json tag latest branch rel_url
+  local repo json tag latest rel_url
   mkdir -p "$STATE"
 
   repo=$(read_file "$REPO_F")
-  # No recorded repo, or it has been moved or deleted: nothing to ask.
-  [ -n "$repo" ] && [ -d "$repo/.git" ] || return 0
+  # No recorded install, or it has been moved or deleted: nothing to ask.
+  [ -n "$repo" ] && [ -d "$repo" ] || return 0
 
   # Stamp first. A remote that hangs or refuses should cost one attempt per
   # day, not one per session start.
   date +%F > "$STAMP"
 
-  url=$(git -C "$repo" remote get-url origin 2>/dev/null) || { : > "$AVAIL"; return 0; }
-  slug=$(github_slug "$url") || { : > "$AVAIL"; return 0; }
-
   json=$(timeout 8 curl -fsSL -H 'Accept: application/vnd.github+json' \
-    "https://api.github.com/repos/$slug/releases/latest" 2>/dev/null) || { : > "$AVAIL"; return 0; }
+    "https://api.github.com/repos/$GITHUB_SLUG/releases/latest" 2>/dev/null) || { : > "$AVAIL"; return 0; }
 
   tag=$(json_field "$json" tag_name)
   latest=$(printf '%s' "$tag" | sed 's/^v//' | grep -E '^[0-9]+(\.[0-9]+)*$') || true
 
   if [ -z "$latest" ]; then
-    : > "$AVAIL"; : > "$BRANCH_F"; : > "$URL_F"
+    : > "$AVAIL"; : > "$URL_F"
     return 0
   fi
 
   printf '%s\n' "$latest" > "$AVAIL"
-  # The release branch for vX.Y.Z is release/vX.Y — recorded so update.sh can
-  # offer it directly instead of guessing.
-  branch="release/v$(printf '%s' "$latest" | cut -d. -f1-2)"
-  printf '%s\n' "$branch" > "$BRANCH_F"
 
   rel_url=$(json_field "$json" html_url)
   printf '%s\n' "$rel_url" > "$URL_F"
@@ -168,7 +147,6 @@ case "${1:-status}" in
     printf '%s\n' "$DISPLAY_NAME"
     printf '  installed:    %s\n' "$(read_file "$INSTALLED" || true)"
     printf '  available:    %s\n' "$(read_file "$AVAIL" | grep . || echo '(none found)')"
-    printf '  release br:   %s\n' "$(read_file "$BRANCH_F" | grep . || echo '-')"
     printf '  release url:  %s\n' "$(read_file "$URL_F" | grep . || echo '-')"
     printf '  last checked: %s\n' "$(read_file "$STAMP" | grep . || echo 'never')"
     printf '  repo:         %s\n' "$(read_file "$REPO_F" | grep . || echo '(not recorded)')"
@@ -182,7 +160,7 @@ case "${1:-status}" in
     ;;
 
   clear)
-    rm -f "$STAMP" "$AVAIL" "$BRANCH_F" "$URL_F"
+    rm -f "$STAMP" "$AVAIL" "$URL_F"
     ;;
 
   *)
