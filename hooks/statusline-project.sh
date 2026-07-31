@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Custom status line: project identity at a glance, over two rows.
+# Custom status line: project identity at a glance, over two or three rows.
 #
 # Renders directly under the prompt bar, on every session, always visible.
 # Receives session JSON on stdin; whatever this prints becomes the line.
@@ -10,7 +10,7 @@
 #
 # Touches no session state: /resume keeps its auto-generated topic titles.
 #
-# --- two rows ----------------------------------------------------------------
+# --- two rows, plus a third when an update is waiting -------------------------
 # The host splits stdout on newlines: one line renders as a single truncating
 # <Text>, more than one as a column of them, one <Text> per row. Three rules
 # follow from how it prepares those rows, and this script depends on all three:
@@ -33,6 +33,12 @@
 #
 #   ROW 1  folder → branch                    model · effort | context · cache
 #   ROW 2  GSD phase                           5h% (reset)   7d% (reset)  RC
+#   ROW 3            session-colour ↑ v1.2.0            (only when one is waiting)
+#
+# Row 3 is centred rather than flushed to either side, which is why it is a row
+# of its own rather than a block on row 2: it is a notice about the tool itself,
+# not a field describing this session, and centring is what tells those apart at
+# a glance.
 
 set -uo pipefail
 
@@ -461,11 +467,16 @@ build_left_gsd() {
 # must never call git or touch the network. The check that writes these files
 # runs in the background from the SessionStart hook.
 #
+# The text names the tool, because this row is the only thing on the line that
+# is not about the current session — an unlabelled "↑ v1.2.0" beside a model
+# name and a token count reads as though the SESSION has an update waiting.
+#
 # U+2191 rather than the obvious U+2B06: the upwards *arrow* is narrow in every
 # terminal, whereas the emoji-range one renders double-width in some, and visw()
-# counts characters — an under-measured right group pushes the flushed blocks
-# past the terminal edge. Same reasoning as the row-2 window glyphs above.
+# counts characters — an under-measured block would centre off by a column.
+# Same reasoning as the row-2 window glyphs above.
 UPDATE_GLYPH=$'↑'
+UPDATE_NAME="session-colour"
 update_badge=""
 _us="${XDG_STATE_HOME:-$HOME/.local/state}/session-colour"
 if [ -r "$_us/available" ] && [ -r "$_us/installed" ]; then
@@ -473,7 +484,7 @@ if [ -r "$_us/available" ] && [ -r "$_us/installed" ]; then
   read -r _in < "$_us/installed" || _in=""
   if [ -n "$_av" ] && [ -n "$_in" ] && [ "$_av" != "$_in" ] \
      && [ "$(printf '%s\n%s\n' "$_in" "$_av" | sort -V | tail -1)" = "$_av" ]; then
-    update_badge="${UPDATE_GLYPH} v${_av}"
+    update_badge="${UPDATE_NAME} ${UPDATE_GLYPH} v${_av}"
   fi
 fi
 
@@ -496,12 +507,6 @@ sgr() { printf '\033[38;2;%sm' "$1"; }
 build_right_ctx() {
   local level=$1 head="" tail="" combined="" name mark
   rsegs=()
-
-  # Leftmost of the right group, and exempt from the verbosity ladder — it is
-  # short, it is rarely present, and dropping it to fit would mean the one thing
-  # you are meant to act on is the first thing to disappear on a narrow window.
-  # Amber marks it as needing attention without reading as an error.
-  [ -n "$update_badge" ] && add_right "$PL_WARN" "$update_badge"
 
   if [ -n "$model" ] && [ "$level" -ge 1 ]; then
     name=$model
@@ -680,4 +685,23 @@ emit_row "$left" "$gap" "$(render_right)"
 if [ -n "$gsd_text" ] || [ "$fh_pct" != "-" ] || [ "$wk_pct" != "-" ] || [ "$remote" = "on" ]; then
   fit_row build_left_gsd build_right_usage 2
   emit_row "$left" "$gap" "$(render_right)"
+fi
+
+# Row 3 is emitted only when an update is waiting, so most sessions never see a
+# third row at all.
+#
+# Centred, which emit_row expresses as an empty left group and a gap: the host
+# trims each row before rendering, and the reset emit_row leads with is what
+# stops that trim from eating the padding and sliding this back to column 0.
+#
+# The centre is taken over $avail, the same budget rows 1 and 2 pad themselves
+# out to, so it reads as centred against them rather than against the terminal.
+# A window too narrow to centre in falls back to column 0 rather than
+# overflowing — the row would otherwise push past the edge and be clipped.
+if [ -n "$update_badge" ]; then
+  rsegs=()
+  add_right "$PL_WARN" "$update_badge"
+  pad=$(( (avail - $(right_width)) / 2 ))
+  [ "$pad" -ge 1 ] || pad=0
+  emit_row "" "$pad" "$(render_right)"
 fi

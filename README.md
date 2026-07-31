@@ -168,14 +168,17 @@ non-pre-release version is and writes the answer to a state file. It never
 fetches, never touches your working tree, and never installs anything. Needs
 `curl` and a `github.com` origin remote; `jq` is used when installed.
 
-When a newer release exists, the status line grows a badge:
+When a newer release exists, the status line grows a third row:
 
 ```
-▍claude-sandbox ▶ main        ↑ v1.2.0    Opus 5 | 167.9k / 1M
+▍claude-sandbox ▶ main                    Opus 5 | 167.9k / 1M
+                                     🕐 42% (13:13)  📅 63% (Wed 04:20)
+                     session-colour ↑ v1.2.0
 ```
 
-The badge sits at the left of the right-hand group and is never dropped to make
-room, so it doesn't vanish on a narrow terminal.
+It is centred under the other two, and names the tool so it can't be misread as
+something about the current session. When no update is waiting the row is not
+drawn at all, and the status line is its usual two rows.
 
 To take the update:
 

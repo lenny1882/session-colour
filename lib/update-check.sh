@@ -26,7 +26,6 @@
 # not, so the notice you see is at most a day stale and costs nothing to show.
 #
 #   check [--force]   run today's check if it has not run; silent; ~0.5s
-#   badge             "<glyph> vX.Y.Z" if an update is waiting, else nothing
 #   notice            two-line plain-text notice, else nothing
 #   hook-json         {"systemMessage": "..."} for a hook to emit, else nothing
 #   status            installed / available / last checked
@@ -141,10 +140,6 @@ case "${1:-status}" in
     do_check
     ;;
 
-  badge)
-    update_pending && printf '⬆ v%s' "$(read_file "$AVAIL")"
-    ;;
-
   notice)
     if update_pending; then
       printf '%s: v%s is available (installed: v%s)\n' \
@@ -191,7 +186,7 @@ case "${1:-status}" in
     ;;
 
   *)
-    printf 'usage: %s {check [--force]|badge|notice|hook-json|status|clear}\n' \
+    printf 'usage: %s {check [--force]|notice|hook-json|status|clear}\n' \
       "$(basename "$0")" >&2
     exit 1
     ;;
