@@ -13,7 +13,8 @@ and a custom status line drawn underneath it.
 ```
 
 The status line also carries what the session is running on and how much of your
-context and rate limits you have used, on two rows.
+context and rate limits you have used, on two rows — plus a third when an
+update to session-colour is waiting.
 
 There are eight colours, because that is how many `/color` accepts. A ninth
 folder gets no colour rather than a duplicate one.
@@ -24,7 +25,7 @@ folder gets no colour rather than a duplicate one.
 
 | Path | What it is |
 |---|---|
-| `hooks/statusline-project.sh` | The status line. Reads session JSON on stdin, prints one or two rows. |
+| `hooks/statusline-project.sh` | The status line. Reads session JSON on stdin, prints one to three rows. |
 | `hooks/session-identity.sh` | `SessionStart` hook. Claims the folder's colour. Silent. |
 | `hooks/session-identity-end.sh` | `SessionEnd` hook. Releases it when the last session in the folder exits. |
 | `bin/claude-session` | Launcher wrapper. Colours the prompt bar. Used through a shell alias. |
