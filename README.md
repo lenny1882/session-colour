@@ -16,6 +16,21 @@ The status line also carries what the session is running on and how much of your
 context and rate limits you have used, on two rows — plus a third when an
 update to session-colour is waiting.
 
+In a project GSD is planning — one with a `.planning/STATE.md` — the left of
+the second row names the milestone and the phase in hand, and ends with how far
+that phase has got:
+
+```
+▍claude-sandbox ▶ main                    Opus 5 | 167.9k / 1M
+ v1.2 · 3 of 8 (Status line) · 2/4   🕐 21% (14:30)   📅 15% (Sat 11:01)
+```
+
+The `2/4` is the plan now running out of the four in that phase, read from the
+`Plan:` line GSD keeps in `STATE.md`. It counts the plan in flight rather than
+the ones finished, so a phase on its last plan reads `4/4`. Where that count
+isn't available — between milestones, or when the plan total wasn't known when
+the phase started — the numbers are left off and the block ends at the phase.
+
 There are eight colours, because that is how many `/color` accepts. A ninth
 folder gets no colour rather than a duplicate one.
 
