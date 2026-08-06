@@ -179,11 +179,11 @@ restart. If Claude Code is open, `/hooks` forces a settings reload.
 ## Releasing
 
 Run `/release` (see [`.claude/skills/release`](.claude/skills/release/SKILL.md)).
-It bumps `VERSION` on `main`, merges `main` into the matching `release/vX.Y`
-branch, and tags there — which is what [the release
+It bumps `VERSION` on `main`, merges `main` into the matching `release/vX.x`
+branch (one per major version), and tags there — which is what [the release
 workflow](.github/workflows/release.yml) turns into a GitHub Release with
 auto-generated notes and a `session-colour.tar.gz` install tarball attached.
-The workflow fires on any pushed `vX.Y.Z` tag, so the `release/vX.Y`-only rule
+The workflow fires on any pushed `vX.Y.Z` tag, so the `release/vX.x`-only rule
 is enforced by always going through that skill, not by the workflow itself. A
 tag with a hyphen, e.g. `v1.2.0-rc1`, is published as a pre-release and is
 skipped by everyone's update check.
