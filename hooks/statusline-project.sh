@@ -190,8 +190,8 @@ for _ in 1 2 3 4 5 6 7 8; do
   d=${d%/*}
 done
 
-# STATE.md carries YAML frontmatter (milestone, progress counts) and a
-# "## Current Position" section holding the live phase. One awk pass reads
+# STATE.md carries YAML frontmatter (milestone) and a "## Current Position"
+# section holding the live phase and its plan progress. One awk pass reads
 # both, and stops at the section after Current Position — the performance
 # tables further down are long and none of it is wanted here.
 gsd_text=""
@@ -202,10 +202,23 @@ if [ -n "$gsd_state" ]; then
     fm && /^milestone:[[:space:]]/ {
       sub(/^milestone:[[:space:]]*/, ""); gsub(/"/, ""); ms = $0; next
     }
-    fm && /^[[:space:]]+total_plans:/     { tp = $2 + 0; next }
-    fm && /^[[:space:]]+completed_plans:/ { cp = $2 + 0; next }
     !fm && ph == "" && /^Phase:[[:space:]]/ {
       sub(/^Phase:[[:space:]]*/, ""); ph = $0; next
+    }
+    # "Plan: 2 of 4 in current phase". GSD writes it when the phase starts and
+    # steps it as each plan finishes, so it names the plan now running rather
+    # than counting finished ones: 2/4 is the second of four under way. The
+    # frontmatter progress counts are deliberately not read — they span the
+    # whole milestone, which says nothing about how far this phase has got.
+    # Between milestones the line reads "Plan: —", and a phase whose plan count
+    # was unknown at the start gives "1 of ?"; neither matches, and both leave
+    # the counts off rather than printing half a figure.
+    !fm && ph != "" && pt == 0 && /^Plan:[[:space:]]/ {
+      if (match($0, /[0-9]+[[:space:]]+of[[:space:]]+[0-9]+/)) {
+        split(substr($0, RSTART, RLENGTH), f, /[^0-9]+/)
+        pc = f[1] + 0; pt = f[2] + 0
+      }
+      next
     }
     !fm && ph != "" && /^## / { exit }
     END {
@@ -214,7 +227,7 @@ if [ -n "$gsd_state" ]; then
       # printing both would spend half the block saying it twice.
       if (ph != "") out = (ms != "" && index(ph, ms) == 0) ? ms " · " ph : ph
       else          out = ms
-      if (tp > 0) out = out " · " cp "/" tp
+      if (pt > 0) out = out " · " pc "/" pt
       print out
     }' "$gsd_state" 2>/dev/null)
 fi
