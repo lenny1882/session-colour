@@ -69,9 +69,17 @@ It finds the real binary at `~/.local/bin/claude` (where the official installer
 puts it), falling back to a `PATH` lookup for npm-global or system-wide
 installs. Set `CLAUDE_REAL_BIN` to point at it directly if yours is somewhere
 else. If it can't find one it says so and exits rather than failing obscurely. It steps aside whenever colouring would cost you something: if you pass
-your own prompt, or use `-p`, `--resume`, `--continue` or `--fork-session`, it
-runs the real binary unchanged. Aliases don't apply to non-interactive shells,
-so scripts, cron jobs and other tooling that call `claude` are unaffected.
+your own prompt, or use `-p`, it runs the real binary unchanged. Aliases don't
+apply to non-interactive shells, so scripts, cron jobs and other tooling that
+call `claude` are unaffected.
+
+Resumed sessions are coloured too. `claude --resume`, `claude -r <id>` and
+`claude -c` all get `/color <name>` appended, which runs after Claude Code has
+restored the transcript's own colour and overrides it — so a folder that lost
+its colour overnight comes back on whatever it holds today, prompt bar and
+status line together. Bare `--resume` takes an optional value, so the prompt is
+fenced off with `--` (`claude --resume -- '/color red'`); without that, the
+picker would read `/color red` as its search term.
 
 **`lib/update-check.sh`** you can call directly to see where you stand:
 
@@ -262,13 +270,16 @@ stable across restarts.
   `SessionStart` with source `clear`. The hook re-claims the registry entry, so
   the status line survives — but nothing re-runs `/color`, so the box goes grey
   until you restart.
-- **After `/resume`, the two can disagree.** If the folder already holds a
-  colour through another live session, that colour wins for the status line
-  while the prompt bar restores the resumed session's own. Unavoidable while
-  `/color` is unreachable after launch.
-- **`--resume`, `--continue`, `-p` and a positional prompt skip colouring.**
-  Deliberate. Every ambiguity resolves towards not colouring, so the failure
-  mode is a plain prompt bar, never a swallowed prompt.
+- **`/resume` typed inside a running session can still disagree.** There is no
+  launcher on that path, so nothing can re-run `/color`: the prompt bar shows
+  the colour restored from the transcript while the status line shows the
+  folder's. Resuming from the shell (`claude --resume`, `-c`) does not have
+  this problem — the launcher passes the folder's colour in. The same applies
+  to picking a session from the startup picker after a bare `claude`.
+- **`-p` and a positional prompt skip colouring.** Deliberate. Every ambiguity
+  resolves towards not colouring, so the failure mode is a plain prompt bar,
+  never a swallowed prompt. `--teleport`, `--from-pr`, `--bg` and `--bare` are
+  skipped for the same reason.
 
 `docs/HANDOFF.md` has the reasoning behind each of these, the routes that were
 tried and rejected, and the layout arithmetic behind the status line's width

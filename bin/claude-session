@@ -54,18 +54,28 @@ LOCK="$REG/.lock"
 PALETTE=(red blue green yellow purple orange pink cyan)
 
 # --- decide whether colouring applies at all ---------------------------------
-# Skipped for: print mode (no prompt bar), resume/continue/fork (Claude Code
-# restores the session's own agentColor from the transcript), nested sessions,
-# a non-tty, and any invocation that already carries a positional prompt — the
-# prompt slot holds only one value and the user's own prompt wins.
+# Skipped for: print mode (no prompt bar), nested sessions, a non-tty, and any
+# invocation that already carries a positional prompt — the prompt slot holds
+# one value and the user's own prompt wins.
+#
+# Resuming is NOT skipped. Claude Code restores the session's own agentColor
+# from the transcript, which is precisely the problem: a folder that lost its
+# colour overnight comes back with a prompt bar the status line cannot match.
+# The positional prompt reaches a resumed session exactly as it reaches a new
+# one — verified in the 2.1.231 bundle, where the CLI carries it as
+# `inputPrompt` into the REPL's `initialMessage` with no resume condition, and
+# the transcript restore rebuilds the session state as `{...restored,
+# initialMessage}`. `/color` therefore runs after the restored colour is
+# applied, and overrides it.
 #
 # Telling a positional prompt from an option's value needs the option table,
-# so the three lists below are derived from `claude --help` (2.1.220). Every
+# so the four lists below are derived from `claude --help` (2.1.231). Every
 # ambiguity resolves towards *not* colouring: the failure mode is a default
 # prompt bar, never a swallowed prompt.
 
-# Options that make colouring meaningless or that restore their own colour.
-DISQUALIFY=" -p --print -c --continue -r --resume --teleport --fork-session
+# Options that make colouring meaningless, or whose own value is ambiguous
+# enough that appending a prompt is not worth the risk of eating it.
+DISQUALIFY=" -p --print --teleport
  --bg --background --bare --resume-session-at --rewind-files --from-pr "
 
 # Variadic (<x...>): consume an unknown number of following tokens.
@@ -83,6 +93,15 @@ TAKES_VALUE=" --agent --agents --append-system-prompt --debug-file --effort
 # prompt, so bail.
 OPTIONAL_VALUE=" -d --debug -w --worktree --remote-control --prompt-suggestions "
 
+# --resume is optional-valued too, but here the ambiguity resolves the other
+# way: a bare token after it is a session id or title, never a prompt, because
+# the prompt is ours to append. What it does need is a `--` when no value
+# follows, or the option swallows "/color <name>" as its search term:
+#
+#     claude --resume '/color red'      -> Error: ... Provided value "/color red"
+#     claude --resume -- '/color red'   -> picker, then /color red as turn one
+RESUME_OPTIONAL=" -r --resume "
+
 # Collapse the line breaks above to single spaces: in_list matches on " tok ".
 DISQUALIFY=" $(echo $DISQUALIFY) "
 TAKES_VALUE=" $(echo $TAKES_VALUE) "
@@ -90,9 +109,14 @@ OPTIONAL_VALUE=" $(echo $OPTIONAL_VALUE) "
 
 in_list() { case "$2" in *" $1 "*) return 0 ;; esac; return 1; }
 
+# Set by should_colour when the command line ends up needing a `--` between the
+# user's arguments and the "/color <name>" we append.
+NEED_SEPARATOR=0
+
 should_colour() {
   [ -t 1 ] || return 1
   [ -z "${CLAUDE_CODE_CHILD_SESSION:-}" ] || return 1
+  NEED_SEPARATOR=0
 
   local a next
   while [ $# -gt 0 ]; do
@@ -106,6 +130,12 @@ should_colour() {
       return 1
     elif in_list "$a" "$TAKES_VALUE"; then
       [ $# -gt 0 ] && shift      # step over the value
+    elif in_list "$a" "$RESUME_OPTIONAL"; then
+      case "$next" in
+        ""|-*) NEED_SEPARATOR=1 ;;  # bare --resume: the picker opens, and our
+                                    # prompt must not become its search term
+        *) shift ;;                 # a session id or title: step over it
+      esac
     elif in_list "$a" "$OPTIONAL_VALUE"; then
       case "$next" in
         ""|-*) ;;                # no value present
@@ -194,6 +224,9 @@ if should_colour "$@"; then
   trap - EXIT
   if [ -n "$colour" ]; then
     export CLAUDE_SESSION_COLOUR="$colour"
+    if [ "$NEED_SEPARATOR" = 1 ]; then
+      exec "$REAL_CLAUDE" "$@" -- "/color $colour"
+    fi
     exec "$REAL_CLAUDE" "$@" "/color $colour"
   fi
 fi

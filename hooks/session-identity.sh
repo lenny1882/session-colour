@@ -21,10 +21,10 @@
 # `clear` as well, RELEASING the folder's claim. Without a matching re-claim a
 # resumed session runs with no registry entry at all: the prompt bar restores
 # its own colour from the transcript while the status line, finding nothing for
-# the folder, falls back to its unregistered grey-green. On those two sources
-# the wrapper has not run (it skips --resume, and /clear never leaves the
-# process), so the colour has to be recovered here instead — see the ladder
-# below.
+# the folder, falls back to its unregistered grey-green. A resume started from
+# the shell does have the wrapper behind it and arrives with a colour already
+# claimed; an in-process /resume and /clear do not, and the colour has to be
+# recovered here instead — see the ladder below.
 #
 # Deliberately does NOT set `sessionTitle`: a custom title permanently
 # shadows the auto-generated topic title in /resume (custom ?? ai).
@@ -130,18 +130,21 @@ in_palette() {
 chosen=""
 
 # 1. The wrapper's choice. It claimed under this same lock moments ago, so on a
-#    startup it is simply right. It is also what covers /clear, where the
-#    variable is still in the process environment — but by then the sweep above
-#    may have handed the colour to another folder, so it is checked, not
-#    trusted.
+#    startup it is simply right. It is also what covers /clear and a resume
+#    started from the shell, where the variable is still in the process
+#    environment — but by then the sweep above may have handed the colour to
+#    another folder, so it is checked, not trusted.
 #
-#    Skipped on resume. The variable survives in the environment there too, but
-#    it describes the colour the process was LAUNCHED with, and an in-process
-#    /resume has just replaced the prompt bar with the incoming session's own
-#    restored colour. Honouring it would re-claim the colour of the session
-#    that was just left.
-if [ "$source" != "resume" ] && [ -n "${CLAUDE_SESSION_COLOUR:-}" ] \
-   && reusable "$CLAUDE_SESSION_COLOUR"; then
+#    Honoured on resume too, because the wrapper now colours resumed sessions:
+#    it appends "/color <name>" to `claude --resume` and `claude -c`, and that
+#    runs after Claude Code has restored the transcript's agentColor, so it
+#    overrides it. The prompt bar ends up on the wrapper's colour, and this
+#    rung is what puts the status line on the same one.
+#
+#    An in-process /resume arrives here with the variable set and no wrapper
+#    behind it. Harmless: the folder still holds that colour through this very
+#    process, so rung 2 would return the same answer.
+if [ -n "${CLAUDE_SESSION_COLOUR:-}" ] && reusable "$CLAUDE_SESSION_COLOUR"; then
   chosen="$CLAUDE_SESSION_COLOUR"
 fi
 
@@ -149,9 +152,9 @@ fi
 #    so a live claim outranks anything this session would prefer for itself.
 [ -n "$chosen" ] || chosen="$found"
 
-# 3. The colour this session is about to draw its own prompt bar in. On resume
-#    Claude Code restores agentColor from the transcript, and nothing here can
-#    change it — so re-claiming that same colour is what keeps the status line
+# 3. The colour this session is about to draw its own prompt bar in. On an
+#    in-process /resume Claude Code restores agentColor from the transcript and
+#    nothing can override it — so re-claiming that colour keeps the status line
 #    and the prompt bar in agreement, rather than agreeing by luck. The records
 #    are line-anchored and rewritten on every session-state save, so the last
 #    one is the live value; anchoring also avoids matching the same string
@@ -180,11 +183,24 @@ fi
 [ -n "$chosen" ] || exit 0
 
 # The wrapper exec'd Claude Code, so its $$ is this pid — its "<pid> pending"
-# placeholder is this session's line, not a second one. Drop any line for this
-# pid before appending, so the registry keeps exactly one entry per session.
-if [ -s "$REG/$chosen" ] && grep -q "^${pid} " "$REG/$chosen" 2>/dev/null; then
-  grep -v "^${pid} " "$REG/$chosen" > "$REG/$chosen.tmp" && mv "$REG/$chosen.tmp" "$REG/$chosen"
-fi
+# placeholder is this session's line, not a second one. Drop every line for
+# this pid before appending, so the registry keeps exactly one entry per
+# session.
+#
+# Every colour is swept, not just the chosen one. The wrapper claims before
+# launch and the ladder above can still settle elsewhere; a placeholder left on
+# a colour this session does not use would hold that colour against a live pid
+# for as long as the session runs.
+for f in "$REG"/*; do
+  [ -f "$f" ] || continue
+  grep -q "^${pid} " "$f" 2>/dev/null || continue
+  keep=$(grep -v "^${pid} " "$f")
+  if [ "$(basename "$f")" != "$chosen" ] && [ "$(printf '%s\n' "$keep" | grep -c .)" -le 1 ]; then
+    rm -f "$f"                    # nothing but the dir= line left: release it
+  else
+    printf '%s\n' "$keep" > "$f"
+  fi
+done
 
 # A folder claiming a colour for the first time via the wrapper has the dir=
 # line written already; without the wrapper, the block above created it.

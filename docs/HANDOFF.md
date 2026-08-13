@@ -1,6 +1,6 @@
 # Handoff — per-folder session colouring & identity in Claude Code
 
-**Date:** 2026-07-27 (revised same day: prompt bar solved via launcher alias; palette table corrected; `/clear` behaviour documented) · **2026-07-28: status line redesign** — powerline styling, usage meters, width budget, `/rc` badge (see that section)
+**Date:** 2026-07-27 (revised same day: prompt bar solved via launcher alias; palette table corrected; `/clear` behaviour documented) · **2026-07-28: status line redesign** — powerline styling, usage meters, width budget, `/rc` badge (see that section) · **2026-08-13: resumed sessions coloured** — the launcher no longer skips `--resume`/`-c` (see "Colouring a resumed session")
 **Claude Code version investigated:** 2.1.220 (`/home/james/.local/share/claude/versions/2.1.220`)
 **Environment:** GNOME Terminal, VTE 6003, `COLORTERM=truecolor`, no tmux, Linux
 
@@ -67,7 +67,7 @@ Added 2026-07-27, for the wrapper:
 
 - Wrapper + patched hook, 3 concurrent sessions over 2 folders → one registry line per session, real session ids, no `pending` residue, both projA sessions on red
 - Hook invoked *without* the wrapper → allocates exactly as before (regression check)
-- Skip matrix: colours on bare `claude`, `--effort high`, `--model opus`, `--effort=high`, `--verbose`; skips on `-p`, `--resume`, `-c`, a bare prompt, `--effort high "fix it"`, `--add-dir /tmp`, `-w feat`, `--`
+- Skip matrix: colours on bare `claude`, `--effort high`, `--model opus`, `--effort=high`, `--verbose`; skips on `-p`, a bare prompt, `--effort high "fix it"`, `--add-dir /tmp`, `-w feat`, `--`. (`--resume` and `-c` were on the skip list until 2026-08-13; they are coloured now.)
 - All eight status line colours diffed against the bundle's dark table — 8/8 match
 
 Also confirmed live: `CLAUDE_PID` **is** exported to hook processes and points at the real `claude` process (verified by walking `/proc` ancestors from inside a hook).
@@ -90,7 +90,7 @@ Costs and limits:
 
 - **The prompt slot is single-use.** Passing your own prompt means no colour; the wrapper detects this and skips rather than swallowing it.
 - Telling a positional prompt from an option's *value* needs the option table, so the wrapper carries three lists derived from `claude --help`. Every ambiguity resolves towards *not* colouring.
-- Skipped for `-p/--print` (no prompt bar) and for `--resume`/`--continue`/`--fork-session`, which restore the session's own `agentColor` from the transcript.
+- Skipped for `-p/--print` (no prompt bar). `--resume`/`--continue`/`--fork-session` were skipped too until 2026-08-13 — see "Colouring a resumed session".
 - `/color` shows as a first turn in the transcript. Cosmetic.
 - **Still capped at eight**, because `/color` accepts only the eight names and no hex.
 
@@ -215,7 +215,7 @@ well as `startup`, and picks its colour by a four-rung ladder:
 
 | | Rung | Notes |
 |---|---|---|
-| 1 | `CLAUDE_SESSION_COLOUR` | The wrapper's choice. **Skipped on `resume`** — the variable survives in the environment but names the colour the *process* launched with, and an in-process `/resume` has already replaced the prompt bar with the incoming session's own colour. Honouring it would re-claim the colour of the session just left. Checked against `owner[]`, not trusted, since on `clear` another folder may have taken it. |
+| 1 | `CLAUDE_SESSION_COLOUR` | The wrapper's choice. Honoured on `resume` as well since 2026-08-13, when the wrapper started colouring resumed sessions — see "Colouring a resumed session" below. An in-process `/resume` reaches this rung with the variable set and no wrapper behind it, which is harmless: the folder holds that colour through this very process, so rung 2 would return the same answer. Checked against `owner[]`, not trusted, since on `clear` another folder may have taken it. |
 | 2 | `$found` | The colour this folder already holds. Folder identity outranks anything one session would prefer for itself. |
 | 3 | The transcript's last `agent-color` record | The rung that makes resume correct: it re-claims the exact colour the prompt bar just restored, so the two agree by construction rather than by luck. Read from `transcript_path` (present in the input builder shared by every hook, with a path derived from cwd+sid as a fallback). Records are line-anchored and rewritten on every session-state save, so `grep -a '^{"type":"agent-color"' | tail -1` is both the live value and immune to the same string quoted inside a tool result. |
 | 4 | First unheld colour | As before. |
@@ -226,8 +226,9 @@ this folder. Nothing is ever stolen from a live folder.
 
 **Residual limit.** If the folder already holds a colour via another live session,
 rung 2 wins and a resumed prompt bar can still disagree with the status line.
-That is unavoidable while `/color` is unreachable after launch — the alternative
-would be two colours for one folder, which defeats the point.
+For a resume started from the shell that is now fixed by the wrapper (below).
+For an in-process `/resume` it stands: `/color` is unreachable after launch, and
+the alternative would be two colours for one folder, which defeats the point.
 
 Tested in isolated `HOME`s, 15 assertions, all passing: startup regression;
 wrapper hint; resume re-claiming the transcript colour over an earlier one;
@@ -238,6 +239,78 @@ hint honoured, and rejected when stale; a non-palette `agentColor` rejected; all
 eight held → no colour and no theft; two resumes leaving one registry line;
 silence on every path; and a stale `CLAUDE_SESSION_COLOUR` on resume losing to
 the restored colour. Suite is not kept — it is reproducible from this list.
+
+## Colouring a resumed session — added 2026-08-13
+
+**Symptom.** A folder is red on Monday. Its last session exits, so red goes back
+in the pool. On Tuesday a different folder starts first and takes red — it is
+first in `PALETTE`. Resuming Monday's session then gives a **red prompt bar and
+a blue status line**, and both folders show a red bar until one of them exits.
+
+Reproduced against a throwaway `HOME`: hook run for folder A (`startup`) → red;
+`SessionEnd` → released; hook run for folder B (`startup`) → red; hook run for
+folder A (`resume`, transcript saying red) → rung 1 skipped on resume, rung 2
+empty, rung 3 refused because B holds red, rung 4 → blue.
+
+**Why the old answer was wrong.** `claude-session` skipped `--resume`/`-c`/
+`--fork-session` on the assumption that a restored `agentColor` cannot be
+overridden. It can. Traced through the 2.1.231 binary:
+
+- The CLI carries the positional prompt as `inputPrompt` into the prepared
+  session object with no resume condition, and the REPL turns it into
+  `initialMessage: k ? {message: ...} : t.replyOnResume ? {replay:!0} : null`.
+- The transcript restore (`mGi`) rebuilds the state as
+  `{...restored, initialMessage: g}` with `g = r.initialState.initialMessage`,
+  so the prompt survives `-c` and `-r <id>` as well as the picker.
+- The picker path passes the CLI's own state (`initialState: tr`) straight
+  through. The newer FleetView picker is the one branch that would drop it, and
+  it is gated on `!inputPrompt` plus `CLAUDE_CODE_FLEET_PAST_SESSIONS` /
+  `tengu_fleet_past_sessions`, which default off — with a prompt present the
+  classic picker is used.
+
+`/color` therefore runs *after* the restored colour is applied and overrides it.
+
+**Argument parsing.** `--resume` takes an *optional* value, so an appended
+prompt is swallowed as its search term. Both forms verified live:
+
+```
+$ claude -p --resume '/color red'
+Error: --resume requires a valid session ID or session title when used with
+--print. ... Provided value "/color red" is not a UUID and does not match any
+session title.
+
+$ claude -p --resume -- '/color red'
+Error: --resume requires a valid session ID or session title when used with
+--print. Usage: claude -p --resume <session-id|title>
+```
+
+The second shows `--` ending the option, leaving the prompt as a positional. So
+the wrapper inserts `--` only when `-r`/`--resume` carries no value of its own;
+`-r <id>`, `--resume=<id>` and `-c` take the prompt appended directly.
+
+**The change.**
+
+- `bin/claude-session`: `-c`/`--continue`/`-r`/`--resume`/`--fork-session` off
+  `DISQUALIFY`; new `RESUME_OPTIONAL` list; `NEED_SEPARATOR` drives the `--`.
+  `--teleport`, `--from-pr`, `--resume-session-at` and `--rewind-files` stay
+  skipped — their values are ambiguous enough not to be worth the risk.
+- `hooks/session-identity.sh`: rung 1 no longer skips `resume`, so the status
+  line follows the colour the wrapper just put on the prompt bar.
+- Same hook: the `<pid> pending` placeholder is now cleared from *every* colour
+  rather than only the chosen one. The wrapper claims before launch, the ladder
+  can still settle elsewhere, and a placeholder left behind would hold a colour
+  against a live pid for the life of the session.
+
+**Not fixed, and not fixable this way:** `/resume` typed inside a running
+session, and picking a session from the startup picker after a bare `claude`.
+Neither has a launcher behind it, so nothing re-runs `/color`. The registry-side
+options — reserving a folder's colour after release, or letting the status line
+follow the bar and allow two folders one colour — were left alone.
+
+Covered by `test/run-tests.sh`: resume keeping the launcher's colour without
+disturbing the folder that took the old one; an overtaken claim being given
+back; `--resume` fenced with `--`; `--resume <id>` and `-c` taking the prompt
+directly.
 
 ### Routes to restoring the prompt bar colour
 

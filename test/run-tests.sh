@@ -127,6 +127,34 @@ payload "$proj" s9 | (cd "$proj" && CLAUDE_PID=$p1 "$END")
 [ -e "$HOME/.claude/session-colors/blue" ] \
   && no "the last session out releases the colour" "still claimed" || ok "the last session out releases the colour"
 
+echo "resuming a session"
+# The bug this covers: a folder's colour is released when its last session
+# exits, another folder takes it overnight, and the resumed session comes back
+# with a prompt bar the status line cannot match. The launcher now passes
+# "/color <name>" on resume too, so the hook has to honour that choice rather
+# than allocate around it.
+rm -rf "$HOME/.claude/session-colors"
+payload "$other" s10 | (cd "$other" && CLAUDE_PID=$p2 CLAUDE_SESSION_COLOUR=red "$ID")
+printf 'dir=%s\n%s pending\n' "$proj" "$p1" > "$HOME/.claude/session-colors/green"
+payload "$proj" s11 resume | (cd "$proj" && CLAUDE_PID=$p1 CLAUDE_SESSION_COLOUR=green "$ID")
+grep -q " s11$" "$HOME/.claude/session-colors/green" 2>/dev/null \
+  && ok "a resumed session keeps the colour the launcher gave it" || no "a resumed session keeps the colour the launcher gave it" "$(ls "$HOME/.claude/session-colors")"
+head -1 "$HOME/.claude/session-colors/red" | grep -q "^dir=$other$" \
+  && ok "without disturbing the folder that took its old colour" || no "without disturbing the folder that took its old colour" "$(cat "$HOME/.claude/session-colors/red" 2>&1)"
+
+# The launcher claims before it launches, so between the claim and this hook
+# another folder can win the same colour. The placeholder it left behind must
+# not go on holding a colour this session does not use.
+rm -rf "$HOME/.claude/session-colors"; mkdir -p "$HOME/.claude/session-colors"
+printf 'dir=%s\n%s s12\n%s pending\n' "$other" "$p2" "$p1" > "$HOME/.claude/session-colors/green"
+payload "$proj" s13 | (cd "$proj" && CLAUDE_PID=$p1 CLAUDE_SESSION_COLOUR=green "$ID")
+grep -q "^${p1} " "$HOME/.claude/session-colors/green" \
+  && no "a claim overtaken before the hook runs is given back" "still holds green" || ok "a claim overtaken before the hook runs is given back"
+grep -q " s12$" "$HOME/.claude/session-colors/green" \
+  && ok "and the folder that overtook it keeps green" || no "and the folder that overtook it keeps green" "$(cat "$HOME/.claude/session-colors/green" 2>&1)"
+grep -lq " s13$" "$HOME/.claude/session-colors"/* 2>/dev/null \
+  && ok "while this session lands on a colour of its own" || no "while this session lands on a colour of its own" "$(ls "$HOME/.claude/session-colors")"
+
 echo "the launcher"
 mkdir -p "$TMP/bin"
 cat > "$TMP/bin/fake-claude" <<'STUB'
@@ -156,14 +184,35 @@ if command -v script >/dev/null 2>&1; then
   grep -q ' pending$' "$HOME/.claude/session-colors/$claimed" \
     && ok "as a placeholder for the hook to complete" || no "as a placeholder for the hook to complete" "$(cat "$HOME/.claude/session-colors/$claimed")"
 
-  # --resume restores its own colour from the transcript, so claiming one here
-  # would burn a colour the session never uses.
+  # Resuming restores the session's own colour from the transcript, which is
+  # the colour a folder may since have lost. The launcher colours it anyway,
+  # and "/color <name>" runs after the restore, so the folder wins.
+  #
+  # Bare --resume takes an optional value, so the prompt needs a `--` in front
+  # of it or Claude Code reads "/color <name>" as the picker's search term:
+  #     claude --resume '/color red'  ->  Provided value "/color red" ...
   rm -rf "$HOME/.claude/session-colors"; : > "$TMP/launched"
   launch --resume
-  grep -q 'colour: none' "$TMP/launched" \
-    && ok "--resume claims nothing" || no "--resume claims nothing" "$(cat "$TMP/launched" 2>&1)"
-  [ -d "$HOME/.claude/session-colors" ] && [ -n "$(ls -A "$HOME/.claude/session-colors" 2>/dev/null)" ] \
-    && no "--resume leaves the registry alone" "wrote to it" || ok "--resume leaves the registry alone"
+  claimed=$(sed -n 's/^colour: //p' "$TMP/launched")
+  [ -n "$claimed" ] && [ "$claimed" != none ] \
+    && ok "--resume is coloured, not skipped" || no "--resume is coloured, not skipped" "$(cat "$TMP/launched" 2>&1)"
+  grep -q "args: --resume -- /color $claimed" "$TMP/launched" \
+    && ok "and its prompt is fenced off with --, so the picker keeps its search term" \
+    || no "and its prompt is fenced off with --, so the picker keeps its search term" "$(cat "$TMP/launched" 2>&1)"
+
+  # With a session id the option's value is already taken, so no fence is
+  # needed — and adding one would be a second positional.
+  rm -rf "$HOME/.claude/session-colors"; : > "$TMP/launched"
+  launch --resume 2f3e0da6-6a8c-4270-8f41-b1843ce47d7e
+  claimed=$(sed -n 's/^colour: //p' "$TMP/launched")
+  grep -q "args: --resume 2f3e0da6-6a8c-4270-8f41-b1843ce47d7e /color $claimed" "$TMP/launched" \
+    && ok "--resume <id> takes the prompt directly" || no "--resume <id> takes the prompt directly" "$(cat "$TMP/launched" 2>&1)"
+
+  rm -rf "$HOME/.claude/session-colors"; : > "$TMP/launched"
+  launch -c
+  claimed=$(sed -n 's/^colour: //p' "$TMP/launched")
+  grep -q "args: -c /color $claimed" "$TMP/launched" \
+    && ok "so does --continue, which carries no value" || no "so does --continue, which carries no value" "$(cat "$TMP/launched" 2>&1)"
 
   # A positional argument is the user's prompt: one-shot, no prompt bar to colour.
   rm -rf "$HOME/.claude/session-colors"; : > "$TMP/launched"
