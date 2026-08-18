@@ -8,7 +8,7 @@ unused one. The colour shows in two places: the prompt bar around the input box,
 and a custom status line drawn underneath it.
 
 ```
-▍claude-sandbox ▶ main                    Opus 5 | 167.9k / 1M
+▍claude-sandbox ▶ main            Opus 5 · ✻high | 167.9k / 1M
                                      🕐 21% (14:30)   📅 15% (Sat 11:01)
 ```
 
@@ -16,12 +16,18 @@ The status line also carries what the session is running on and how much of your
 context and rate limits you have used, on two rows — plus a third when an
 update to session-colour is waiting.
 
+The `✻` marks extended thinking, and the word after it is the reasoning effort;
+neither appears on a model without them. Each row narrows on its own as the
+terminal gets smaller: the first drops those two, then the model name, and the
+second drops the reset times in brackets. The token count and the percentages
+are the last things to go.
+
 In a project GSD is planning — one with a `.planning/STATE.md` — the left of
 the second row names the milestone and the phase in hand, and ends with how far
 that phase has got:
 
 ```
-▍claude-sandbox ▶ main                    Opus 5 | 167.9k / 1M
+▍claude-sandbox ▶ main            Opus 5 · ✻high | 167.9k / 1M
  v1.2 · 3 of 8 (Status line) · 2/4   🕐 21% (14:30)   📅 15% (Sat 11:01)
 ```
 
@@ -207,7 +213,7 @@ anything. Needs `curl`; `jq` is used when installed.
 When a newer release exists, the status line grows a third row:
 
 ```
-▍claude-sandbox ▶ main                    Opus 5 | 167.9k / 1M
+▍claude-sandbox ▶ main            Opus 5 · ✻high | 167.9k / 1M
                                      🕐 42% (13:13)  📅 63% (Wed 04:20)
                      session-colour ↑ v1.2.0
 ```
