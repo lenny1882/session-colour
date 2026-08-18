@@ -494,6 +494,81 @@ the 2026-07-27 pair. Intermediate same-day backups were removed.
 
 ---
 
+## Status line, as it renders now — added 2026-08-18, against 2.1.234
+
+The section above records the 2026-07-28 state, when the line was one row. It is
+two now, three when an update is waiting:
+
+```
+▍project ▶ main                           Opus 5 · ✻high | 138k / 200k
+ v1.2 · 3 of 8 (Status line) · 2/4   🕐 20% (20:06) ↑4%/h   📅 34% (Sat 13:00)
+              session-colour ↑ v1.2.0
+```
+
+Row 1 carries identity on the left and, on the right, one block whose halves are
+divided by a pipe: model name with its effort and extended-thinking markers, then
+context consumption. Row 2 carries the milestone and phase in hand on the left,
+and the two usage windows as separate rectangles on the right — clock glyph for
+the rolling five-hour window, calendar for the seven-day one — plus an `RC` badge
+in a remote session. Row 2 is skipped when it would hold nothing. The glyphs are
+Nerd Font private-use characters, not the emoji shown here: `visw()` counts
+characters, and a double-width emoji would under-measure the right group by a
+column per row.
+
+Each row has its own verbosity ladder, stepped down until the row fits. Row 1
+drops the effort and thinking markers, then the model name, leaving the token
+pair — the only half that changes every turn. Row 2 drops the reset times, then
+the burn rate, leaving bare percentages; the `RC` badge is never dropped.
+
+### The five-hour burn rate
+
+`rate_limits` reports a level, not a direction, so the `↑N%/h` on the five-hour
+meter is computed here. Samples land in `~/.claude/statusline-state/<session-id>.5h`,
+one every 20 seconds at most, and the rate is taken against the oldest sample
+still inside a two-hour window, needing a 600-second span before it will print.
+It only ever reads upward: usage accumulates within a block and is reset by the
+block ending, never by time passing, so a fall is a window rollover and
+everything before it is discarded. Files are swept on the first render of a
+session, deleting anything untouched for a day.
+
+The percentage is read twice — floored for display, unfloored for the rate,
+because integer steps make 1% granularity look like a spike.
+
+### Payload fields consumed
+
+`context_window.total_input_tokens`, `.context_window_size` and
+`.used_percentage`; `rate_limits.five_hour` and `.seven_day`, each
+`.used_percentage` and `.resets_at`; `effort.level`, present only on models that
+support it; `thinking.enabled`; and `remote.session_id`, which the bundled
+statusLine documentation does not mention.
+
+### The cache pair, removed 2026-08-18
+
+Row 1 used to end with `⇣` cache reads and `⇡` cache writes, taken from
+`context_window.current_usage`. That object describes the **last API call**, not
+the session, so the pair changed every turn and reported nothing that changed a
+decision: reads growing with the conversation and small writes is the ordinary
+case. Removed along with its two `jq` fields, its glyphs, and row 1's level-3
+rung.
+
+### Per-model weekly limits — investigated, not adopted
+
+The replacement considered was a per-model weekly meter. `rate_limits` carries
+more than the bundled documentation admits: the client spreads the whole object
+into the payload, and the schema declares `seven_day_oauth_apps`,
+`seven_day_opus` and `seven_day_sonnet` alongside the documented pair, plus a
+`model_scoped` array of `{display_name, utilization, resets_at}`. `/usage` builds
+its per-model rows from the same source, as `Current week (${display_name})`.
+
+**Not adopted.** Whether a model gets its own bucket is plan-dependent — the
+bundle carries both "share one combined Opus limit" and "Opus limit separate
+from standard Opus" — and on this account the only rows are "Current week (all
+models)" and "Current week (Fable)". Opus therefore counts against the
+all-models weekly, which row 2 already shows, and a `model_scoped` meter would
+render a permanent 0%. Worth revisiting only if a plan change adds a bucket.
+
+---
+
 ## Testing
 
 Open one new terminal in a folder no current session uses. The prompt bar should come up already coloured, with the status line matching. Existing sessions are unaffected and hold no registry entry — they predate the install, so they stay uncoloured until restarted, and the alias only applies to shells opened after it was added.

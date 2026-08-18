@@ -31,7 +31,7 @@
 # disturb row 1. Both rows live in one column box whose width is that of its
 # widest row, so the width budget below is shared rather than per-row.
 #
-#   ROW 1  folder → branch                    model · effort | context · cache
+#   ROW 1  folder → branch                    model · effort | context
 #   ROW 2  GSD phase                           5h% (reset)   7d% (reset)  RC
 #   ROW 3            session-colour ↑ v1.2.0            (only when one is waiting)
 #
@@ -100,12 +100,6 @@ if command -v jq >/dev/null 2>&1; then
   # same numerator behind used_percentage. The percentage is still read, purely
   # to pick the colour.
   #
-  # cache_read/cache_write come from current_usage, which describes the LAST
-  # API call rather than the session — that is what makes the pair worth
-  # showing: it reports how much of this turn's prompt was served from cache.
-  # current_usage is null until the first response, and null.foo is null in jq,
-  # so the // "-" defaults cover it.
-  #
   # fh_raw is the unfloored five-hour percentage. Everything displayed is
   # floored to match the rest of the line, but the burn rate differentiates the
   # value, and integer steps make a 1% granularity look like a rate spike.
@@ -115,7 +109,7 @@ if command -v jq >/dev/null 2>&1; then
   # always present; remote appears only in a remote/rc session and is the one
   # field here that the bundled statusLine documentation does not mention.
   read -r ctx_used ctx_max ctx_pct fh_pct fh_reset wk_pct wk_reset \
-          cache_read cache_write effort thinking remote fh_raw <<<"$(printf '%s' "$payload" | jq -r '
+          effort thinking remote fh_raw <<<"$(printf '%s' "$payload" | jq -r '
     [ (.context_window.total_input_tokens     // "-")
     , (.context_window.context_window_size    // "-")
     , (.context_window.used_percentage        // "-")
@@ -123,8 +117,6 @@ if command -v jq >/dev/null 2>&1; then
     , (.rate_limits.five_hour.resets_at       // "-")
     , (.rate_limits.seven_day.used_percentage // "-")
     , (.rate_limits.seven_day.resets_at       // "-")
-    , (.context_window.current_usage.cache_read_input_tokens     // "-")
-    , (.context_window.current_usage.cache_creation_input_tokens // "-")
     , (.effort.level // "-")
     , (if .thinking.enabled == true then "on" elif .thinking.enabled == false then "off" else "-" end)
     , (if (.remote.session_id // "") != "" then "on" else "-" end)
@@ -134,7 +126,7 @@ else
   dir=""; model=""; sid=""; keydirs=""
   ctx_used="-"; ctx_max="-"; ctx_pct="-"
   fh_pct="-"; fh_reset="-"; wk_pct="-"; wk_reset="-"
-  cache_read="-"; cache_write="-"; effort="-"; thinking="-"; remote="-"; fh_raw="-"
+  effort="-"; thinking="-"; remote="-"; fh_raw="-"
 fi
 [ -n "$dir" ] || dir="$PWD"
 [ -n "$keydirs" ] || keydirs="$dir"
@@ -338,10 +330,8 @@ SEP=$'\ue0b0'        # separator blockright
 THIN=$'\ue0b1'       # separator right
 GIT_GLYPH=$'\ue0a0'  # separator branch
 
-# Row-1 markers: extended thinking, then the cache read/write pair.
+# Row-1 marker: extended thinking.
 THINK_GLYPH=$'\u273b'   # sixteen pointed asterisk
-CACHE_IN=$'\u21e3'      # downwards dashed arrow - served FROM cache
-CACHE_OUT=$'\u21e1'     # upwards dashed arrow   - written TO cache
 
 # Row-2 window labels. Nerd Font private-use glyphs, chosen over the obvious
 # emoji (U+1F550, U+1F4C5) because those render double-width: visw() counts
@@ -514,9 +504,9 @@ sgr() { printf '\033[38;2;%sm' "$1"; }
 #
 # One block, halves divided by a pipe, following the two rate windows below:
 # model identity and reasoning settings on the left of it, context consumption
-# on the right. Verbosity steps down by dropping the cache pair, then the
-# effort/thinking pair, then the model name — the token pair is the last thing
-# standing because it is the only half that changes every turn.
+# on the right. Verbosity steps down by dropping the effort/thinking pair, then
+# the model name — the token pair is the last thing standing because it is the
+# only half that changes every turn.
 build_right_ctx() {
   local level=$1 head="" tail="" combined="" name mark
   rsegs=()
@@ -546,13 +536,6 @@ build_right_ctx() {
       *)             tail=$(sgr "$(fg_for_pct "$ctx_pct")") ;;
     esac
     tail+="$(fmt_tokens "$ctx_used") / $(fmt_tokens "$ctx_max")"
-    # cache_read vs cache_creation for the last API call: how much of this
-    # turn's prompt was served from cache (down) versus written to it (up).
-    # A read that collapses toward zero means something invalidated the prefix.
-    if [ "$level" -ge 3 ] && [ "$cache_read" != "-" ] && [ "$cache_write" != "-" ] \
-       && { [ "$cache_read" -gt 0 ] || [ "$cache_write" -gt 0 ]; }; then
-      tail+="$(sgr "$PL_LIGHTGREY") · ${CACHE_IN}$(fmt_tokens "$cache_read") ${CACHE_OUT}$(fmt_tokens "$cache_write")"
-    fi
   fi
 
   combined=$head
@@ -690,7 +673,7 @@ emit_row() {   # left, gap, right
   printf '%s%s%*s%s\n' "$lead" "$1" "$2" "" "$3"
 }
 
-fit_row build_left_ident build_right_ctx 3
+fit_row build_left_ident build_right_ctx 2
 emit_row "$left" "$gap" "$(render_right)"
 
 # Row 2 is conditional: no phase, no windows and no remote badge means there is
