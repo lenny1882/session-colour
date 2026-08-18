@@ -8,8 +8,8 @@ unused one. The colour shows in two places: the prompt bar around the input box,
 and a custom status line drawn underneath it.
 
 ```
-▍claude-sandbox ▶ main            Opus 5 · ✻high | 167.9k / 1M
-                                     🕐 21% (14:30)   📅 15% (Sat 11:01)
+▍claude-sandbox ▶ main                      Opus 5 · ✻high | 167.9k / 1M
+                               🕐 21% (14:30) ↑4%/h   📅 15% (Sat 11:01)
 ```
 
 The status line also carries what the session is running on and how much of your
@@ -17,17 +17,26 @@ context and rate limits you have used, on two rows — plus a third when an
 update to session-colour is waiting.
 
 The `✻` marks extended thinking, and the word after it is the reasoning effort;
-neither appears on a model without them. Each row narrows on its own as the
-terminal gets smaller: the first drops those two, then the model name, and the
-second drops the reset times in brackets. The token count and the percentages
-are the last things to go.
+neither appears on a model without them.
+
+The clock is the rolling five-hour window and the calendar the seven-day one,
+each showing how much of it you have used and, in brackets, when it resets. The
+`↑4%/h` is how fast the five-hour window is climbing. It is worked out from
+samples the session takes as it renders, so it appears once there are ten
+minutes of them to measure across, and it only ever points up — the window falls
+by resetting, not by time passing.
+
+Each row narrows on its own as the terminal gets smaller: the first drops the
+thinking and effort markers, then the model name; the second drops the reset
+times, then the climb rate. The token count and the percentages are the last
+things to go.
 
 In a project GSD is planning — one with a `.planning/STATE.md` — the left of
 the second row names the milestone and the phase in hand, and ends with how far
 that phase has got:
 
 ```
-▍claude-sandbox ▶ main            Opus 5 · ✻high | 167.9k / 1M
+▍claude-sandbox ▶ main                      Opus 5 · ✻high | 167.9k / 1M
  v1.2 · 3 of 8 (Status line) · 2/4   🕐 21% (14:30)   📅 15% (Sat 11:01)
 ```
 
@@ -213,9 +222,9 @@ anything. Needs `curl`; `jq` is used when installed.
 When a newer release exists, the status line grows a third row:
 
 ```
-▍claude-sandbox ▶ main            Opus 5 · ✻high | 167.9k / 1M
-                                     🕐 42% (13:13)  📅 63% (Wed 04:20)
-                     session-colour ↑ v1.2.0
+▍claude-sandbox ▶ main                      Opus 5 · ✻high | 167.9k / 1M
+                                      🕐 42% (13:13)  📅 63% (Wed 04:20)
+                        session-colour ↑ v1.2.0
 ```
 
 It is centred under the other two, and names the tool so it can't be misread as
