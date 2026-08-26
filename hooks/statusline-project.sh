@@ -623,17 +623,25 @@ LAYOUT_INSET=3
 # that column onto a line of its own. Leaving room keeps the badges on this row,
 # top-aligned beside the status line.
 #
-# Sized for the short "/rc" badge (3) plus the parent's columnGap (1). Claude
-# Code shows the longer "/rc active" for the first five sessions that see it,
-# which still wraps; widen this to 11 to cover that too. Nothing in the status
-# line payload reports whether that badge is showing, so this is a fixed
+# The badge column gets INDICATOR_RESERVE - 2 columns, not INDICATOR_RESERVE.
+# The footer box is paddingX:2, so its content edge sits 4 columns in from the
+# terminal; LAYOUT_INSET covers 3 of those, and the parent's columnGap takes 1
+# more. An earlier value of 4 counted the badge and the gap but not that fourth
+# padding column, which left 2 — one short of even the shortest badge, so "/rc"
+# wrapped at every terminal width.
+#
+# 12 leaves 10, which fits "/rc active". Claude Code shows that longer form
+# until five sessions have seen it and "/rc" thereafter, so 12 covers both. The
+# transient "/rc connecting…" (15) and "/rc reconnecting" (16) still wrap, and
+# reserving 18 for them would cost that width in every session. Nothing in the
+# status line payload reports whether the badge is showing, so this is a fixed
 # reservation rather than a conditional one — when the badges are absent it
-# simply holds the right-hand blocks 4 columns off the edge.
+# simply holds the right-hand blocks 12 columns off the edge.
 #
 # It applies to BOTH rows, not just the one the badges sit beside: the rows
 # share a column box whose width is that of its widest row, so a full-width
 # row 2 would push the badge column down exactly as a full-width row 1 does.
-INDICATOR_RESERVE=4
+INDICATOR_RESERVE=12
 avail=$(( cols - LAYOUT_INSET - INDICATOR_RESERVE ))
 
 # Fit one row: step the right group down through its verbosity levels until the
