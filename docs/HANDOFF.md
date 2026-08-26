@@ -392,7 +392,7 @@ Two separate constants, near the bottom of the script:
   render whole, 117 loses its tail. `COLUMNS` itself *is* exported to the status
   line command and tracks the real terminal — verified with a probe injected into
   the live hook — so the shortfall is the box, not a stale width.
-- **`INDICATOR_RESERVE=4`** — see below.
+- **`INDICATOR_RESERVE=12`** — see below.
 
 Because the line pads itself to the full available width (that is how the right
 group flushes to the edge), it is always exactly as wide as it is allowed to be.
@@ -413,14 +413,18 @@ The badge column holds `/rc`, IDE, debug, PR and mode labels, joined by ` · `.
 Consequences:
 
 - A full-width status line **evicts the badge column onto its own line**, because
-  of `flexWrap: "wrap"`. `INDICATOR_RESERVE=4` — 3 for the short `/rc` plus the
-  parent's `columnGap` — keeps it on row 1.
+  of `flexWrap: "wrap"`. The badge column gets `INDICATOR_RESERVE - 2`, not
+  `INDICATOR_RESERVE`: `paddingX: 2` puts the content edge 4 columns in, of
+  which `LAYOUT_INSET` covers 3, and `columnGap` takes 1 more. `=4` therefore
+  left 2 — one short of even `/rc`, which wrapped at every width until
+  2026-08-26.
 - The badge has two forms. `/rc active` (10 wide) shows until the
   `rc-active-badge` counter in settings reaches **5** sessions, then it shortens
-  to `/rc`. Covering the long form needs `INDICATOR_RESERVE=11`.
+  to `/rc`. Covering the long form needs `INDICATOR_RESERVE=12`; the transient
+  `/rc connecting…` (15) and `/rc reconnecting` (16) need 18.
 - The reservation is fixed, not conditional: nothing in the status line payload
   reports whether remote control is on. When the badges are absent it simply
-  holds the right-hand blocks 4 columns off the edge.
+  holds the right-hand blocks 12 columns off the edge.
 - **Putting the badge beside the hint line is not possible.** `alignItems:
   "flex-start"` top-aligns the badge column with the status line. It is hard-coded
   JSX, and the `statusLine` settings schema offers only `type`, `command`,
