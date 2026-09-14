@@ -167,15 +167,16 @@ if [ -z "$chosen" ] && [ -n "$transcript" ] && [ -r "$transcript" ]; then
   fi
 fi
 
-# 4. First unheld colour.
+# 4. Random unheld colour.
 if [ -z "$chosen" ]; then
+  avail=()
   for name in "${PALETTE[@]}"; do
-    if [ ! -e "$REG/$name" ]; then
-      chosen="$name"
-      printf 'dir=%s\n' "$cwd" > "$REG/$name"
-      break
-    fi
+    [ ! -e "$REG/$name" ] && avail+=("$name")
   done
+  if [ "${#avail[@]}" -gt 0 ]; then
+    chosen="${avail[RANDOM % ${#avail[@]}]}"
+    printf 'dir=%s\n' "$cwd" > "$REG/$chosen"
+  fi
 fi
 
 # All eight colours held by other folders: stay on the default rather than

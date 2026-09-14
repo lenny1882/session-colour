@@ -198,14 +198,15 @@ claim_colour() {
 
   chosen="$found"
   if [ -z "$chosen" ]; then
+    local -a avail=()
     local name
     for name in "${PALETTE[@]}"; do
-      if [ ! -e "$REG/$name" ]; then
-        chosen="$name"
-        printf 'dir=%s\n' "$cwd" > "$REG/$name"
-        break
-      fi
+      [ ! -e "$REG/$name" ] && avail+=("$name")
     done
+    if [ "${#avail[@]}" -gt 0 ]; then
+      chosen="${avail[RANDOM % ${#avail[@]}]}"
+      printf 'dir=%s\n' "$cwd" > "$REG/$chosen"
+    fi
   fi
 
   # All eight held by other folders: stay default rather than making two
