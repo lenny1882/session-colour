@@ -618,33 +618,13 @@ LAYOUT_INSET=3
 #
 # INDICATOR_RESERVE — the footer is one flexWrap:"wrap" row holding two columns:
 # this status line (with the mode/agents hint line beneath it) on the left, and
-# the badge column — /rc, IDE, debug, PR, mode labels — on the right. Since this
-# line pads itself to the full width to flush its right-hand blocks, it crowds
-# that column onto a line of its own. Leaving room keeps the badges on this row,
-# top-aligned beside the status line.
-#
-# The badge column gets INDICATOR_RESERVE - 2 columns, not INDICATOR_RESERVE.
-# The footer box is paddingX:2, so its content edge sits 4 columns in from the
-# terminal; LAYOUT_INSET covers 3 of those, and the parent's columnGap takes 1
-# more. A value of 4 counted the badge and the gap but not that fourth padding
-# column, which left 2 — one short of even the shortest badge, so "/rc" wrapped
-# at every terminal width.
-#
-# 5 leaves 3, the width of "/rc", which is the badge Claude Code settles on. The
-# longer "/rc active" (10) shows only until five sessions have seen it, and
-# reserving 12 to cover that spent the surplus in every session afterwards: the
-# badge column is right-aligned against the content edge, so the unused columns
-# fall between the right-hand blocks and the badge, as a gap wide enough to read
-# as a mistake. The transient "/rc connecting…" (15) and "/rc reconnecting" (16)
-# wrap, as they did at 12. Nothing in the status line payload reports whether
-# the badge is showing, so this is a fixed reservation rather than a conditional
-# one — when the badges are absent it simply holds the right-hand blocks 5
-# columns off the edge.
-#
-# It applies to BOTH rows, not just the one the badges sit beside: the rows
-# share a column box whose width is that of its widest row, so a full-width
-# row 2 would push the badge column down exactly as a full-width row 1 does.
-INDICATOR_RESERVE=5
+# the badge column — /rc, IDE, debug, PR, mode labels — on the right. Any width
+# held back here sits blank at the right edge whenever no badge is showing,
+# which is nearly always, so none is held back. When a badge does show, the
+# line still pads to the full width, the badge column wraps onto its own flex
+# line, flush right below the hint line, and nothing is truncated. (Holding 5
+# kept "/rc" beside row 1; see docs/HANDOFF.md for the arithmetic.)
+INDICATOR_RESERVE=0
 avail=$(( cols - LAYOUT_INSET - INDICATOR_RESERVE ))
 
 # Fit one row: step the right group down through its verbosity levels until the
