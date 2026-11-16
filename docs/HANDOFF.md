@@ -392,7 +392,7 @@ Two separate constants, near the bottom of the script:
   render whole, 117 loses its tail. `COLUMNS` itself *is* exported to the status
   line command and tracks the real terminal — verified with a probe injected into
   the live hook — so the shortfall is the box, not a stale width.
-- **`INDICATOR_RESERVE=0`** — see below.
+- **`INDICATOR_RESERVE=1`** — see below.
 
 Because the line pads itself to the full available width (that is how the right
 group flushes to the edge), it is always exactly as wide as it is allowed to be.
@@ -425,12 +425,14 @@ Consequences:
   on 2026-09-03 because the badge column is right-aligned against the content
   edge, so a reservation for a form that is not showing leaves the surplus
   blank *between* the right-hand blocks and the badge.
-- **`=0` is what the script sets** (2026-11-16). `=5` kept the short `/rc`
+- **`=1` is what the script sets** (2026-11-16). `=5` kept the short `/rc`
   beside row 1, but the badge had not appeared for weeks, so the 5 columns sat
-  blank at the right edge of every session. Nothing in the status line payload
+  blank at the right edge of every session. The remaining 1 covers the fourth
+  padding column that `LAYOUT_INSET` does not: `=0` made every row one column
+  too wide, and Ink truncated the right-hand blocks. Nothing in the status line payload
   reports whether remote control is on, so the reservation cannot be made
   conditional.
-- What a badge costs at `=0`: the badge column wraps to its own flex line,
+- What a badge costs at `=1`: the badge column wraps to its own flex line,
   which `marginLeft: "auto"` keeps flush right and which lands **below the hint
   line**, not beside the status line. One extra footer row while a badge shows;
   nothing is truncated.

@@ -618,13 +618,18 @@ LAYOUT_INSET=3
 #
 # INDICATOR_RESERVE — the footer is one flexWrap:"wrap" row holding two columns:
 # this status line (with the mode/agents hint line beneath it) on the left, and
-# the badge column — /rc, IDE, debug, PR, mode labels — on the right. Any width
-# held back here sits blank at the right edge whenever no badge is showing,
-# which is nearly always, so none is held back. When a badge does show, the
-# line still pads to the full width, the badge column wraps onto its own flex
-# line, flush right below the hint line, and nothing is truncated. (Holding 5
-# kept "/rc" beside row 1; see docs/HANDOFF.md for the arithmetic.)
-INDICATOR_RESERVE=0
+# the badge column — /rc, IDE, debug, PR, mode labels — on the right. Width
+# held back for the badges sits blank at the right edge whenever none is
+# showing, which is nearly always, so none is held back for them. When a badge
+# does show, the line still fills the row, the badge column wraps onto its own
+# flex line, flush right below the hint line, and nothing is truncated.
+#
+# The 1 that remains is not for the badges. The footer box is paddingX:2, so
+# its content edge sits 4 columns in from the terminal, and LAYOUT_INSET
+# covers only 3 of those. At 0 every row was one column too wide and Ink cut
+# the last character off the right-hand blocks. (Holding 5 kept "/rc" beside
+# row 1; see docs/HANDOFF.md for the arithmetic.)
+INDICATOR_RESERVE=1
 avail=$(( cols - LAYOUT_INSET - INDICATOR_RESERVE ))
 
 # Fit one row: step the right group down through its verbosity levels until the
